@@ -1,0 +1,38 @@
+.PHONY: clean all
+
+CC = clang++ -O3
+
+CFLAGS = -g -std=c++11
+
+LDFLAGS = -lboost_regex 
+
+SRCS = 	../Share/Point.cpp \
+	../Share/PreOrb.cpp \
+	../Share/RdWrIni.cpp \
+	../Share/Rect.cpp \
+    ../Share/RMGHeader.cpp \
+	../Share/RMGBase.cpp \
+	../Share/RMGImage.cpp \
+	../Share/SpMatrix.cpp \
+	../Share/SpStatistics.cpp \
+	../Share/IProcessable.cpp \
+	../Plugins/PfxCTInSAR/Delaunay.cpp \
+	../Plugins/PfxCTInSAR/Lsqr.cpp \
+	../Plugins/PfxCTInSAR/ResidueUnw.cpp
+
+INCS = $(SRCS:.cpp=.h)
+
+%.o: %.cpp $(INCS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+OBJS = $(SRCS:.cpp=.o)
+
+TEST_FILE = ./TestResidueUnw.cpp
+
+all: test
+
+test: $(OBJS) $(TEST_FILE) 
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+clean: 
+	rm test ../Plugins/PfxCTInSAR/*.o
