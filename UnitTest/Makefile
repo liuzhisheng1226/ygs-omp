@@ -1,10 +1,10 @@
 .PHONY: clean all
 
-CC = clang++ -O3
+CC = g++ -O3
 
-CFLAGS = -g -std=c++11
+CFLAGS = -g -std=c++11 -fopenmp
 
-LDFLAGS = -lboost_regex
+LDFLAGS = -lboost_regex 
 
 SRCS = 	../Share/Point.cpp \
 	../Share/PreOrb.cpp \

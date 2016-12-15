@@ -1,6 +1,6 @@
 .PHONY: clean all
 
-CC = clang++ -O3
+CC = g++ -O3 -fopenmp
 
 CFLAGS = -g -std=c++11
 
