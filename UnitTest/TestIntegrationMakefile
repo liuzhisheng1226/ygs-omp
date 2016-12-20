@@ -4,7 +4,7 @@ CC = g++ -O3
 
 CFLAGS = -g -std=c++11 -fopenmp
 
-LDFLAGS = -lboost_regex -lumfpack -lcholmod -lamd -lcolamd -lblas -llapack -lcamd -lccolamd -lsuitesparseconfig -lmetis
+LDFLAGS = -lboost_regex -lumfpack -lcholmod -lamd -lcolamd -lblas -llapack -lcamd -lccolamd -lsuitesparseconfig -lmetis -fopenmp
 
 SRCS = 	../Share/Point.cpp \
 	../Share/PreOrb.cpp \

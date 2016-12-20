@@ -1,10 +1,12 @@
 #!/bin/bash
 
-# clean data
+# usage: ./run_omp.sh num_threads
+#            command     $1
 
 DATA_ROOT_PATH="/home/liutao/workspace/ygs_data/"
-TEST_PATH="/home/liutao/workspace/github/ygs-linux/UnitTest"
+TEST_PATH="/home/liutao/workspace/github/ygs-omp/UnitTest"
 
+# clean data
 cd ${DATA_ROOT_PATH}
 rm -rf SLC
 mkdir -p SLC/cal
@@ -27,8 +29,10 @@ rm -f CTI/*.ldr CTI/*.rmg CTI/vel.txt CTI/velFileOut.txt CTI/deformationOut/*
 cd ${TEST_PATH}
 # date: YYYYmmddHHMMSS
 date=$(date +%Y%m%d%H%M%S) 
-logfile="log/log_linux_"${date}
+logfile="log/log_omp_${1}_${date}"
 touch $logfile
+
+export OMP_NUM_THREADS=$1
 
 for curfile in "TestIQCombineMakefile" "TestR2CalibrationMakefile" "TestInterferogramMapsMakefile" "TestRegistrCoarseMakefile" "TestRegistrFineMakefile" "TestPreOrbImportMakefile" "TestRoiSelectProMakefile" "TestFlatPhaseMakefile" "TestCoherenceEstMakefile" "TestComplexProMakefile" "TestMeanCohMakefile" "TestMuskMakefile" "TestBaselineMakefile" "TestPSCMakefile" "TestDeluanayMakefile" "TestIntegrationMakefile" "TestResidueMakefile" "TestResidueUnwMakefile" "TestUonlinearMakefile"
 do
@@ -39,3 +43,5 @@ do
     echo "" >> $logfile
     sleep 10s 
 done
+
+echo "OMP_NUM_THREADS="${OMP_NUM_THREADS}
