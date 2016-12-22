@@ -16,6 +16,8 @@ make -f $1
 
 ./clean_data.sh $1
 
+export OMP_NESTED=true
+
 for i in 1 2 4 8 16 32 64
 do
     ./clean_data.sh $1

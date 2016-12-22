@@ -15,6 +15,7 @@ logfile="log/log_omp_${1}_${date}"
 touch $logfile
 
 export OMP_NUM_THREADS=$1
+export OMP_NESTED=true
 
 for curfile in "TestIQCombineMakefile" "TestR2CalibrationMakefile" "TestInterferogramMapsMakefile" "TestRegistrCoarseMakefile" "TestRegistrFineMakefile" "TestPreOrbImportMakefile" "TestRoiSelectProMakefile" "TestFlatPhaseMakefile" "TestCoherenceEstMakefile" "TestComplexProMakefile" "TestMeanCohMakefile" "TestMuskMakefile" "TestBaselineMakefile" "TestPSCMakefile" "TestDeluanayMakefile" "TestIntegrationMakefile" "TestResidueMakefile" "TestResidueUnwMakefile" "TestUonlinearMakefile"
 do
