@@ -1,6 +1,7 @@
 #include <vector>
 #include <fstream>
 #include "R2Calibration.h"
+#include <omp.h>
 
 CR2Calibration::CR2Calibration(void)
 {
@@ -72,23 +73,30 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
         return;
     }
 
-    complex<float> *outData = new complex<float>[iCols];
     if(inImg.m_oHeader.DataType == eCINT16)
     {
+//#pragma omp parallel for ordered shared(inFile, outFile)
         for(int i=0;i<iRows;i++)
         {
+            complex<float> *outData = new complex<float>[iCols];
+            complex <short> *indata = new complex<short>[iCols];
+//#pragma omp ordered
             {
-                complex <short> *indata = new complex<short>[iCols];
-                complex<float> temp;
                 inFile.read((char *)indata,sizeof(complex<short>)*iCols);
-                for(int j=0;j<iCols;j++)
-                {
-                    temp = complex<float>(indata[j].real(),indata[j].imag());
-                    outData[j] = temp/gainVestor[j];            //norm(temp)/gainVestor.begin()[j]/gainVestor.begin()[j];               
-                }
-                delete[] indata;
             }
-            outFile.write((char *)outData,sizeof(complex<float>)*iCols);
+#pragma omp parallel for
+            for(int j=0;j<iCols;j++)
+            {
+                complex<float> temp = complex<float>(indata[j].real(),indata[j].imag());
+                outData[j] = temp/gainVestor[j];            //norm(temp)/gainVestor.begin()[j]/gainVestor.begin()[j];               
+            }
+            delete[] indata;
+
+//#pragma omp ordered 
+            {
+                outFile.write((char *)outData,sizeof(complex<float>)*iCols);
+            }
+            delete[] outData;
         }
     }//c-short
     else if(eCFLOAT32 == inImg.m_oHeader.DataType)
@@ -98,7 +106,6 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
     inFile.close();
     outFile.close();
     gainVestor.clear();
-    delete[] outData;
 
     CRMGHeader header(inImg.m_oHeader);
     header.DataType = eCFLOAT32;    
