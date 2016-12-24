@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <omp.h>
+
 using namespace std;
 
 CRegistrFine::CRegistrFine(void)
@@ -91,9 +93,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     int  i,j;
     int stepx=(Height-300*2)/numboxAzm;     //方位向窗口中心间隔，边缘空300
     int stepy=(Width-300*2)/numboxRng;      //距离向窗口中心间隔，边缘空300
-    for(i=0;i<numboxAzm;i++)
+#pragma omp parallel for collapse(2)
+    for(int i=0;i<numboxAzm;i++)
     {
-        for(j=0;j<numboxRng;j++)
+        for(int j=0;j<numboxRng;j++)
         {
             centerx[i*numboxRng+j]=300+i*stepx;     //行
             centery[i*numboxRng+j]=300+j*stepy;     //列
@@ -191,15 +194,14 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 double msum=0;          //纪录均值
                 double m2sum=0;         //纪录平方的均值
                 int box=boxsize1;               //匹配窗口大小为81*81
+#pragma omp parallel for collapse(2) reduction(+: msum, m2sum)
                 for(cc=-boxsize1/2;cc<=boxsize1/2;cc++)         //hang
                 {
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                     {
                         temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                        //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()+
-                        //     master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()+master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag());//
-                        msum=msum+temp;
-                        m2sum=m2sum+temp*temp;
+                        msum+=temp;
+                        m2sum+=temp*temp;
                     }
                 }
                 msum=msum/(box*box);        //均值
@@ -284,7 +286,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             }
             if(maxtemp < 0.1) {temp_y[i]=0;}//temp_x=0;}
             
-        }
+        } // for i
         //考虑方位向初始偏移
         double tempnn_mean=0;
         double tempnn_std=0;
@@ -777,11 +779,15 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
 
         //初始化临时变量
         int tempnn[9];
-        for( i=0;i<9;i++)
+        for(int i=0;i<9;i++)
             tempnn[i]=0;
 
+        omp_lock_t file_lock;
+        omp_init_lock(&file_lock);
+
         //在列的方向上也是考虑3个窗口
-        for(i=0;i<3;i++)
+#pragma omp parallel for num_threads(3)
+        for(int i=0;i<3;i++)
         {
             //初始化临时变量
             int z1[3];          
@@ -789,12 +795,14 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             z1[0]=0;z1[1]=0;z1[2]=0;
 
             //在行的方向上考虑3个窗口
-            for(j=0;j<3;j++)
+#pragma omp parallel for num_threads(3) 
+            for(int j=0;j<3;j++)
             {
-
                 //确定窗口的位置
                 int tempstep_a=numboxAzm/3; //近似3等分的位置
                 int tempstep_r=numboxRng/3; //近似3等分的位置
+
+                omp_set_lock(&file_lock);
                 //读取主图像窗口数据
                 file1.seekg(((centerx[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2)*Width+
                             (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2))*
@@ -815,66 +823,64 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     file2.read((char *)(slave+k*boxsize3),boxsize3*sizeof(complex<float>));
                     file2.seekg((Width-boxsize3)*sizeof(complex<float>),ios::cur);
                 }
+                omp_unset_lock(&file_lock);
 
                 //2.利用大窗口数据，计算粗配准参数
-                double temp;
-                double temp1,temp2,temp3;
-                int cc,dd;
+                //int cc,dd;
                 //
                 double msum=0;          //纪录均值
                 double m2sum=0;         //纪录平方的均值
                 int box=boxsize1;               //匹配窗口大小为81*81
-                for(cc=-boxsize1/2;cc<=boxsize1/2;cc++)         //hang
+#pragma omp parallel for num_threads(6) collapse(2) reduction(+: msum, m2sum)
+                for(int cc=-boxsize1/2;cc<=boxsize1/2;cc++)         //hang
                 {
-                    for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
+                    for(int dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                     {
-                        temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
-                        //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                        
-                        msum=msum+temp;
-                        m2sum=m2sum+temp*temp;
+                        double temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
+                        msum += temp;
+                        m2sum += temp*temp;
                     }
                 }
                 msum=msum/(box*box);        //均值
                 m2sum=m2sum/(box*box);
-                temp2=m2sum-msum*msum;      //方差1
+                double temp2=m2sum-msum*msum;      //方差1
 
                 //求相关系数大小; 
-                int ee,ff;
-                double ssum=0;      //记录均值
-                double s2sum=0;     //记录平方的均值
-                double mssum=0;     //记录乘积的均值                    
+                //int ee,ff;
                 double maxcof=0;    //记录这一轮比较的最大的相关系数
                 double cof=0;       //中间相关系数
 
+                omp_lock_t cof_lock;
+                omp_init_lock(&cof_lock);
+
                 int step=(boxsize3-boxsize1)/2;         //两窗口之间的偏移量
-                for(ee=-step;ee<=step;ee++)             //hang
+#pragma omp parallel for num_threads(6) collapse(2)
+                for(int ee=-step;ee<=step;ee++)             //hang
                 {   
-                    for(ff=-step;ff<=step;ff++)         //lie
+                    for(int ff=-step;ff<=step;ff++)         //lie
                     {
-                        ssum=0;
-                        s2sum=0;
-                        mssum=0;
+                        double ssum=0;      //记录均值
+                        double s2sum=0;     //记录平方的均值
+                        double mssum=0;     //记录乘积的均值                    
                         //计算参数
-                        for(cc=-boxsize1/2;cc<=boxsize1/2;cc++)     //hang
+                        for(int cc=-boxsize1/2;cc<=boxsize1/2;cc++)     //hang
                         {
-                            for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
+                            for(int dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                             {
-                                temp = abs(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)]);
-                                //temp= abs(complex<float>(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].real(),slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].imag()));
-                                    
-                                ssum=ssum+temp;
-                                s2sum=s2sum+temp*temp;
-                                mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
-                                //mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;                                    
+                                double temp = abs(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)]);
+                                ssum += temp;
+                                s2sum += temp*temp;
+                                mssum += abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
                             }
                         }
                         ssum=ssum/(box*box);
                         s2sum=s2sum/(box*box);
                         mssum=mssum/(box*box);
                         
-                        temp3=s2sum-ssum*ssum;      //方差2
-                        temp1=mssum-msum*ssum;      //协方差
+                        double temp3=s2sum-ssum*ssum;      //方差2
+                        double temp1=mssum-msum*ssum;      //协方差
+
+                        omp_set_lock(&cof_lock);
                         //计算相关系数
                         if(temp2*temp3==0)
                         {
@@ -896,16 +902,18 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             tempnn[i*3+j]=0;    //hang  
                             z1[j]=0;            //lie   
                         }
-                    }
-                }
+                        omp_unset_lock(&cof_lock);
+                    } // for ff
+                } // for ee
+                omp_destroy_lock(&cof_lock);
                 //保存最大配准位置
                 z_cof[j]=maxcof;
             }//end j
+            
             double maxtemp=z_cof[0];
             temp_y[i]=z1[0];
-
             //到一个最合适的距离向偏移
-            for(j=0;j<3;j++)
+            for(int j=1;j<3;j++)
             {
                 if(z_cof[j] > maxtemp)
                 {
@@ -916,12 +924,12 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             }
             if(maxtemp < 0.1) {temp_y[i]=0;}//temp_x=0;}
             
-        }
+        } // for i
         //考虑方位向初始偏移
         double tempnn_mean=0;
         double tempnn_std=0;
         //通过均值和标准差控制误差
-        for(i=0;i<9;i++)
+        for(int i=0;i<9;i++)
         {
             tempnn_mean += tempnn[i];
             tempnn_std  += tempnn[i]*tempnn[i];
@@ -949,19 +957,21 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         //////////////////////////////////////////////////////////////////////
 
         //在上面的基础上，进行亚象元级配准
-        for(i=0;i<numboxAzm;i++)
+#pragma omp parallel for collapse(2)
+        for(int i=0;i<numboxAzm;i++)
         {
-            //读取一行条的数据
-            //主图像窗口
-            file1.seekg(((centerx[i*numboxRng]-boxsize1/2)*Width)*dSize,ios::beg);
-            file1.read((char *)master_block,boxsize1*Width*dSize);          
-            //辅图象窗口
-            file2.seekg(((centerx[i*numboxRng]+temp_x-boxsize4/2)*Width)*dSize,ios::beg);
-            file2.read((char *)slave_block,boxsize4*Width*dSize);
-
             //距离向德窗口
-            for(j=0;j<numboxRng;j++)
+            for(int j=0;j<numboxRng;j++)
             {
+                omp_set_lock(&file_lock);
+                //读取一行条的数据
+                //主图像窗口
+                file1.seekg(((centerx[i*numboxRng]-boxsize1/2)*Width)*dSize,ios::beg);
+                file1.read((char *)master_block,boxsize1*Width*dSize);          
+                //辅图象窗口
+                file2.seekg(((centerx[i*numboxRng]+temp_x-boxsize4/2)*Width)*dSize,ios::beg);
+                file2.read((char *)slave_block,boxsize4*Width*dSize);
+                omp_unset_lock(&file_lock);
 
                 //临时变量
                 double temp;
@@ -1003,7 +1013,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())); 
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1026,11 +1035,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp = abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum=mssum+ abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
                                 }
                             }
@@ -1086,7 +1093,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1109,11 +1115,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp = abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);  
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
                                 }
                             }
@@ -1169,7 +1173,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp= abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1192,11 +1195,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp =abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                                 }
                             }
@@ -1237,9 +1238,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 {
                     for(dd=-boxsize2/2;dd<=boxsize2/2;dd++)
                     {
-                        //sbox[(cc+boxsize2/2)*boxsize2+dd+boxsize2/2]=complex<float>(
-                        //                          slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]].real(),
-                        //                          slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]].imag());
                         sbox[(cc+boxsize2/2)*boxsize2+dd+boxsize2/2]= slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]];
                     }
                 }
@@ -1256,7 +1254,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 {
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)
                     {
-                        //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                         temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                         mbox[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]=temp;
                         msum=msum+temp;
@@ -1369,8 +1366,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     }
                 }
                 fcof[i*numboxRng+j]=maxcof;                 //每个窗的最佳匹配位置的相干fcof值
-            }
-        }
+            } // for j
+        } // for i
+        omp_destroy_lock(&file_lock);
+
         delete[] master;
         delete[] slave;
 
@@ -1394,16 +1393,14 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     double meanfcof=0;          //fcof的平均值
     double stdvarfcof=0.0;      //fcof的标准差
     int tempn=0;
-    for(i=0;i<numboxAzm;i++)
+#pragma omp parallel for reduction(+: meanfcof, stdvarfcof, tempn)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
-        for(j=0;j<numboxRng;j++)
+        if(fcof[i] <1 && fcof[i] > 1e-6)    //大于0，小于1 
         {
-            if(fcof[i*numboxRng+j] <1 && fcof[i*numboxRng+j] > 1e-6)    //大于0，小于1 
-            {
-                meanfcof   += fcof[i*numboxRng+j];
-                stdvarfcof += fcof[i*numboxRng+j]*fcof[i*numboxRng+j];
-                tempn++;
-            }
+            meanfcof   += fcof[i];
+            stdvarfcof += fcof[i]*fcof[i];
+            tempn++;
         }
     }
     meanfcof=meanfcof/tempn;
@@ -1414,10 +1411,11 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     stdvarfcof = sqrt(stdvarfcof);  //标准差
 
     int num=0;                          //大于(均值+标准差) 的个数
-    for(i=0;i<numboxAzm*numboxRng;i++)
+#pragma omp parallel for reduction(+: num)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
         if(meanfcof+stdvarfcof<fcof[i] && fcof[i] <1 )//
-            num=num+1;
+            num++;
     }
 
     float *basePosX,*basePosY,*slavePosX,*slavePosY;    //X：列方向，Y：行方向
@@ -1429,24 +1427,22 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     float *tempCof = new float[num];
     int pointI=0;
     double azimuth=0;
-    for(int i=0;i<numboxAzm;i++)
+#pragma omp parallel for reduction(+: azimuth, pointI)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
-        for(int j=0;j<numboxRng;j++)
+        if(fcof[i]>meanfcof+stdvarfcof && fcof[i] <1  )//
         {
-            if(fcof[i*numboxRng+j]>meanfcof+stdvarfcof && fcof[i*numboxRng+j] <1  )//
-            {
-                slavePosX[pointI] = centery[i*numboxRng+j]+yshift[i*numboxRng+j];       ////X: lie,Y:hang; x;hang y lie
-                slavePosY[pointI] = centerx[i*numboxRng+j]+xshift[i*numboxRng+j];   //
+            slavePosX[pointI] = centery[i]+yshift[i];       ////X: lie,Y:hang; x;hang y lie
+            slavePosY[pointI] = centerx[i]+xshift[i];   //
 
-                basePosX[pointI]= centery[i*numboxRng+j]; 
-                basePosY[pointI]= centerx[i*numboxRng+j]; 
+            basePosX[pointI]= centery[i]; 
+            basePosY[pointI]= centerx[i]; 
 
-                tempCof[pointI] = fcof[i*numboxRng+j];
+            tempCof[pointI] = fcof[i];
 
-                azimuth=azimuth+xshift[i*numboxRng+j];      //准备计算平均方位偏移
-                pointI++;
-            }
-        }       
+            azimuth += xshift[i];      //准备计算平均方位偏移
+            pointI++;
+        }
     }
 
     azimuth=azimuth/num;            //平均方位偏移
@@ -1755,29 +1751,38 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
         complex<float>*bslave   =   new complex<float>[Width*temp_H];   ;
         complex<float>*slave1=new complex<float>[Width*NewH];   
 
-        for(bnum=0;bnum<temp_N;bnum++)  //
+        omp_lock_t f1_lock, f2_lock;
+        omp_init_lock(&f1_lock);
+        omp_init_lock(&f2_lock);
+
+        streampos pos1 = dSize*Width*(temp_H-delth);
+
+#pragma omp parallel for    
+        for(int bnum=0;bnum<temp_N;bnum++)  //
         {
             if(bnum < temp_N-1)         //
             {
                 int shift_w=0;          
+                omp_set_lock(&f1_lock);
                 if(bnum==0)             
                 {
+                    file1.seekg(0, ios::beg);
                     file1.read((char *)bslave,dSize*Width*(temp_H-delth));
                     shift_w=bnum*600;   
                 }
                 else                    
                 {                       
-                    file1.seekg(-2*delth*Width*dSize,ios::cur);
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize + (streampos)dSize*Width*temp_H*(bnum-1),ios::cur);
                     file1.read((char *)bslave,dSize*Width*temp_H);
-
                     shift_w=bnum*600-delth;
                 }
+                omp_unset_lock(&f1_lock);
                 //
-                for(i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
+                for(int i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
                 {
                     int ii=i-bnum*600;
 
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
                         //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
                         dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
@@ -1921,7 +1926,9 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 delete[] bslave_2;
             }
         }
-        //
+        
+        omp_destroy_lock(&f1_lock);
+        omp_destroy_lock(&f2_lock);
         delete[] bslave;
         delete[] slave1;
     }
@@ -1999,34 +2006,34 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
             iBlock = rowM/eachRow;
             lastRow = rowM - iBlock*eachRow;
         }
-        outdata = new complex<float>[colM];
+        outdata = new complex<float>[eachRow*colM];
         for(int b=0;b<iBlock;b++)
         {
             indata = new complex<short>[eachRow*colM];
             mFileIn.read((char *)indata,dsize*eachRow*colM);
-            for(int m=0;m<eachRow;m++)
+#pragma omp parallel for
+            for(int m=0;m<eachRow*colM;m++)
             {               
-                for(int n=0;n<colM;n++)
-                    outdata[n] = complex<float>(indata[m*colM+n].real(),indata[m*colM+n].imag());
-                mFileOut.write((char *)outdata,sizeof(complex<float>)*colM);
+                outdata[m] = complex<float>(indata[m].real(),indata[m].imag());
             }
+            mFileOut.write((char *)outdata,sizeof(complex<float>)*eachRow*colM);
             delete[] indata;
         }
         if(0!= lastRow)
         {
             indata = new complex<short>[lastRow*colM];
             mFileIn.read((char *)indata,dsize*lastRow*colM);
-            for(int i=0;i<lastRow;i++)
+#pragma omp parallel for
+            for(int i=0;i<lastRow*colM;i++)
             {               
-                for(int n=0;n<colM;n++)
-                    outdata[n] = complex<float>(indata[i*colM+n].real(),indata[i*colM+n].imag());
-               mFileOut.write((char *)outdata,sizeof(complex<float>)*colM);
+                outdata[i] = complex<float>(indata[i].real(),indata[i].imag());
             }
-            delete[] indata;
+            mFileOut.write((char *)outdata,sizeof(complex<float>)*lastRow*colM);
             mFileIn.close();
             mFileOut.close();
-            delete[] outdata;
+            delete[] indata;
         }
+        delete[] outdata;
         CRMGImage mImg(inMfile,inHdrfile);
         CRMGHeader header(mImg.m_oHeader);
         header.DataType = eCFLOAT32;
