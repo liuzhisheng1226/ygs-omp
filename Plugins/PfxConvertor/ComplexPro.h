@@ -3,6 +3,10 @@
 #include "../../Share/Common.h"
 #include <complex>
 #include <cstdio>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <omp.h>
 
 class CComplexPro : public CIProcessable
 {
@@ -18,30 +22,56 @@ public:
     template<class T>
     void ComplexFun(CRMGImage image ,string lpDataExport,int iType)
     {
-        FILE *fileImport,*fileExport;
-        fileImport=fopen(image.m_lpFullname.c_str(),"rb");
-        fileExport=fopen(lpDataExport.c_str(),"wb+");
+        ifstream fileImport(image.m_lpFullname.c_str(), ios::in|ios::binary);
+        if (!fileImport.is_open()) {
+            cout << "error open image fileImport\n";
+            exit(1);
+        }
+        ofstream fileExport(lpDataExport.c_str(), ios::out|ios::binary);
+        if (!fileExport.is_open()) {
+            cout << "error open image fileExport\n";
+            exit(1);
+        }
 
         complex<T> *data=new complex<T>[image.m_oHeader.Sample];
-        float *outData=new float[image.m_oHeader.Sample];
-        complex<float> tempData;
+
+        omp_lock_t r_lock, w_lock;
+        omp_init_lock(&r_lock);
+        omp_init_lock(&w_lock);
+
+#pragma omp parallel for
         for(int i=0;i<image.m_oHeader.Line;i++)
         {
-            fseek(fileImport,sizeof(complex<T>)*i*image.m_oHeader.Sample,SEEK_SET);
-            fread(data,sizeof(complex<T>),image.m_oHeader.Sample,fileImport);
+            float *outData=new float[image.m_oHeader.Sample];
+            
+            omp_set_lock(&r_lock);
+            fileImport.seekg((streampos)sizeof(complex<T>)*i*image.m_oHeader.Sample, ios::beg);
+            fileImport.read((char *)data, sizeof(complex<T>)*image.m_oHeader.Sample);
+            omp_unset_lock(&r_lock);
             
             for(int j=0;j<image.m_oHeader.Sample;j++)
             {
-                tempData = complex<float>(data[j].real(),data[j].imag());
+                complex<float> tempData = complex<float>(data[j].real(),data[j].imag());
                 if(iType == 0)
                     outData[j] = abs(tempData);
                 else if(iType == 1)
                     outData[j] = arg(tempData);
             }
-            fwrite(outData,sizeof(float),image.m_oHeader.Sample,fileExport);
+            omp_set_lock(&w_lock);
+            fileExport.seekp((streampos)i*sizeof(float)*image.m_oHeader.Sample, ios::beg);
+            fileExport.write((char *)outData, sizeof(float)*image.m_oHeader.Sample);
+            omp_unset_lock(&w_lock);
+
+            delete[] outData;
         }//for i
-        fclose(fileImport);
-        fclose(fileExport); 
+
+        omp_destroy_lock(&r_lock);
+        omp_destroy_lock(&w_lock);
+
+        delete[] data;
+
+        fileImport.close();
+        fileExport.close();
         return;
     }
 };

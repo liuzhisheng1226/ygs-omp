@@ -1,6 +1,7 @@
 #include "Musk.h"
 #include <fstream>
 #include <iostream>
+#include <omp.h>
 
 using namespace std;
 
@@ -48,14 +49,12 @@ void CMusk::MuskCoherenceTarget(string fileIn,string fileOut,float lowValue, flo
         return;
     }
 
-    for(int i=0;i<height;i++)
+#pragma omp parallel for
+    for(int i=0;i<height*width;i++)
     {
-        for(int j=0;j<width;j++)
+        if((data[i]>=lowValue)&&(data[i]<=highValue))
         {
-            if((data[i*width+j]>=lowValue)&&(data[i*width+j]<=highValue))
-            {
-                outdata[i*width+j]=1;
-            }
+            outdata[i]=1;
         }
     }
 

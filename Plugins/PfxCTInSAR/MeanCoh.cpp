@@ -5,11 +5,11 @@
 #include <cstdlib>
 #include <fstream>
 /*OMP SUPPORT*/
-// #include <omp.h>
+ #include <omp.h>
 // #include <sys/sysinfo.h>
 using namespace std;
 /*FILE*/
-//#include <cstdio.h>
+#include <cstdio>
 CMeanCoh::CMeanCoh(void)
 {
 }
@@ -48,6 +48,7 @@ void CMeanCoh::MeanCoherence(string fileIn,string fileOut,string fileOutH,int wi
     memset(data,0,sizeof(float)*width*height);
     float *outdata=new float[width*height];
     memset(outdata, 0,sizeof(float)*width*height);
+    
     for(int i=0;i<num;i++)
     {
         // float *data=new float[width*height];
@@ -60,22 +61,18 @@ void CMeanCoh::MeanCoherence(string fileIn,string fileOut,string fileOutH,int wi
         file1.close();
 
         //求和
-        for(int j=0;j<height;j++)
+#pragma omp parallel for
+        for(int j=0;j<height*width;j++)
         {
-            for(int k=0;k<width;k++)
-            {
-                outdata[j*width+k] +=data[j*width+k];
-            }
+            outdata[j] += data[j];
         }
-    }
+    } //for i
 
     //求均值
-    for(int j=0;j<height;j++)
+#pragma omp parallel for
+    for(int j=0;j<height*width;j++)
     {
-        for(int k=0;k<width;k++)
-        {
-            outdata[j*width+k] /=num;
-        }
+        outdata[j] /= num;
     }
     //文件输出
     ofstream file2(fileOut,ios::binary|ios::out );

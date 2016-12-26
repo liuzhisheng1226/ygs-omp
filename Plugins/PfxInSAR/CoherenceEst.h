@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <omp.h>
 using namespace std;
 class CoherenceEst : public CIProcessable
 {
@@ -45,26 +46,38 @@ public:
             exit(1);
         }
 
+        complex<float> *mData = new complex<float>[rLooks* iCols];
+        complex<float> *sData = new complex<float>[rLooks* iCols];
+        float *ftData = new float[rLooks* iCols];
+        
 
         /*FIXME*/
         /*rlook and clook range?*/
         int newRow = iRows/rLooks;
         int newCol = iCols/cLooks;
 
-        complex<float> *mData = new complex<float>[rLooks* iCols];
-        complex<float> *sData = new complex<float>[rLooks* iCols];
-        float *ftData = new float[rLooks* iCols];
-        
-        complex<float> *outData = new complex<float>[newCol];
-        memset(outData,0,sizeof(complex<float>)*newCol);
-        
-        complex<float> covar,ftTemp;
-        float mCov,sCov;
+        omp_lock_t read_lock, write_lock;
+        omp_init_lock(&read_lock);
+        omp_init_lock(&write_lock);
+
+#pragma omp parallel for
         for(int i=0;i<newRow;i++)
         {
+            complex<float> *outData = new complex<float>[newCol];
+            memset(outData,0,sizeof(complex<float>)*newCol);
+        
+            complex<float> covar,ftTemp;
+            float mCov,sCov;
+
+            omp_set_lock(&read_lock);
+            fInM.seekg((streampos)i*sizeof(complex<float>)*rLooks*iCols, ios::beg);
             fInM.read((char *)mData,sizeof(complex<float>)*rLooks*iCols);
+            fInS.seekg((streampos)i*sizeof(complex<float>)*rLooks*iCols, ios::beg);
             fInS.read((char *)sData,sizeof(complex<float>)*rLooks*iCols);
+            fInFlat.seekg((streampos)i*sizeof(float)*rLooks*iCols, ios::beg);
             fInFlat.read((char *)ftData,sizeof(float)*rLooks*iCols);
+            omp_unset_lock(&read_lock);
+
             for(int j=0;j<newCol;j++)
             {
                 covar = complex<float>(0,0);
@@ -87,18 +100,25 @@ public:
                 else
                     outData[j] = complex<float>(0.0,0.0);
             }
+            omp_set_lock(&write_lock);
+            fOutCoh.seekp((streampos)i*sizeof(complex<float>)*newCol, ios::beg);
             fOutCoh.write((char *)outData,sizeof(complex<float>)*newCol);
+            omp_unset_lock(&write_lock);
+
+            delete[] outData;
         }//for i    
+
+        omp_destroy_lock(&read_lock);
+        omp_destroy_lock(&write_lock);
 
         fInM.close();
         fInS.close();
         fInFlat.close();
         fOutCoh.close();
-        
+
         delete[] mData;
         delete[] sData;
         delete[] ftData;
-        delete[] outData;
 
         return;
     }
