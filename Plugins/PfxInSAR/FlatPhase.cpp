@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <omp.h>
 using namespace std;
 
 #define pi_v 3.14159265359
@@ -123,26 +124,9 @@ void CFlatPhase::m_Flat_R2(string mFile,string mFileH,string sFile,string sFileH
     lFirstClm=lFirstClm+blockclm;
     lFirstRow=lFirstRow+blockrow;
 
-
-
-
     //计算地面中间点的坐标：经纬度——>坐标,作为牛顿迭代的初始值
     double xx,yy,zz;
     imageM.LonLat2Coordinate(xx,yy,zz);
-    //double anglo=center_lon;  //经度
-    //double angal=center_lat;  //纬度
-
-    //double f=1-semib/semia;       //椭球体扁率
-    //double c=1/sqrt(1+f*(f-2)*sin(angal)*sin(angal));
-    //double s=(1-f)*(1-f) * c;
-    //double x0=semia*c*cos(angal)*cos(anglo);
-    //double y0=semia*c*cos(angal)*sin(anglo);
-    //double z0=semia*s*sin(angal);
-
-
-    //计算平地相位
-    double R1;      //主图像斜距
-    double R2;      //辅图像斜距
 
     //打开输出数据文件
     //Open OUTPUT image File
@@ -152,35 +136,36 @@ void CFlatPhase::m_Flat_R2(string mFile,string mFileH,string sFile,string sFileH
         exit(1);
     }
 
-    float *phase=new float[lWidth];
-    memset(phase,0,sizeof(float)*lWidth);
-
-
     //利用5个插值点计算每行的平地相位
     long box_Width=lWidth;   //当前数据区的数据列
     int step=box_Width/(5-1);  //每个插值点的间隔
-    double interp_position[5]={0,(double)step,(double)2*step,(double)3*step,(double)box_Width-1};   //插值点位置
-    double interp_phase[5];   //插值点相位
 
-    double *phase_temp=new double [box_Width];    
-    double *phase_position=new double [box_Width];    //记录每个点的位置
-
-    int ii;
-    for(ii=0;ii<box_Width;ii++) 
-    {
-        phase_position[ii]=ii;
-    }
-
-    //精度条
+    omp_lock_t file_lock;
+    omp_init_lock(&file_lock);
 
     //开始计算
-    double t0,t_poi;
-    double satXm,satYm,satZm,satXs,satYs,satZs;
-
-    double x0,y0,z0;
+#pragma omp parallel for
     for(long row=0;row<lHeight;row++)
     {
-        x0=xx; y0=yy; z0=zz;
+        float *phase=new float[lWidth];
+        memset(phase,0,sizeof(float)*lWidth);
+
+        double interp_position[5]={0,(double)step,(double)2*step,(double)3*step,(double)box_Width-1};   //插值点位置
+        double interp_phase[5];   //插值点相位
+
+        double *phase_temp=new double [box_Width];    
+        double *phase_position=new double [box_Width];    //记录每个点的位置
+        for(int ii=0;ii<box_Width;ii++) 
+        {
+            phase_position[ii]=ii;
+        }
+
+        double t0;
+        //计算平地相位
+        double R1;      //主图像斜距
+        double R2;      //辅图像斜距
+        double satXm,satYm,satZm,satXs,satYs,satZs;
+        double x0=xx; double y0=yy; double z0=zz;
         //进度条
         if(!imageM.m_oHeader.PassDirection)
         {//ASCEND
@@ -213,7 +198,7 @@ void CFlatPhase::m_Flat_R2(string mFile,string mFileH,string sFile,string sFileH
         satZs = imageS.Polyfit(zPolyCoef1,t0,0);
 
         //先计算五个差值点的相位
-        for(ii=0;ii<5;ii++)
+        for(int ii=0;ii<5;ii++)
         {
             R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
             //方法Newton（）用斜距求出此时图像中的点的地面坐标
@@ -228,23 +213,23 @@ void CFlatPhase::m_Flat_R2(string mFile,string mFileH,string sFile,string sFileH
         pwcint(interp_position,interp_phase,5,phase_position,phase_temp,box_Width);
 
         //缠绕
-        for(ii=0;ii<box_Width;ii++)
+        for(int ii=0;ii<box_Width;ii++)
         {
             phase[ii]=phase_temp[ii] - floor(phase_temp[ii]/(2*pi_v))*2*pi_v;
             if(phase[ii] > pi_v) phase[ii] -=2*pi_v;
         }
-        //保存输出
+        omp_set_lock(&file_lock);
+        file.seekp((streampos)row*sizeof(float)*lWidth, ios::beg);
         file.write((char *)phase,sizeof(float)*lWidth);
+        omp_unset_lock(&file_lock);
 
-    }
+        delete[] phase;
+        delete[] phase_temp;
+        delete[] phase_position;
+    } // for row
+    omp_destroy_lock(&file_lock);
 
-    //关闭文件
     file.close();
-
-    //释放缓存   
-    delete[] phase;
-    delete[] phase_temp;
-    delete[] phase_position;
 
     //编辑头文件
     CRMGHeader header(imageM.m_oHeader);                        //复制主图像头文件信息
