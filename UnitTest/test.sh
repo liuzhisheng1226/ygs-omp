@@ -18,11 +18,12 @@ make -f $1
 
 export OMP_NESTED=true
 
-for i in 1 2 4 8 16 32 64
+for i in 1 2 4 8 12 16
 do
     ./clean_data.sh $1
     export OMP_NUM_THREADS=$i
     sleep 6s 
+    echo "threads: $i" >> $logfile
     /usr/bin/time -p -a -o $logfile ./test
     echo "" >> $logfile
 done
