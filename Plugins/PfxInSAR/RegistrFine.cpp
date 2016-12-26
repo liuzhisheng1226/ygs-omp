@@ -1757,7 +1757,7 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
 
         streampos pos1 = dSize*Width*(temp_H-delth);
 
-#pragma omp parallel for    
+#pragma omp parallel for shared(pos1)   
         for(int bnum=0;bnum<temp_N;bnum++)  //
         {
             if(bnum < temp_N-1)         //
@@ -1772,7 +1772,7 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 }
                 else                    
                 {                       
-                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize + (streampos)dSize*Width*temp_H*(bnum-1),ios::cur);
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize*bnum + (streampos)dSize*Width*temp_H*(bnum-1),ios::beg);
                     file1.read((char *)bslave,dSize*Width*temp_H);
                     shift_w=bnum*600-delth;
                 }
@@ -1785,12 +1785,12 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                     for(int j=0;j<Width;j++)
                     {
                         //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
 
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    //
-                        belta=dy-t2;    
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    //
+                        float belta=dy-t2;    
                                                 
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 && t1<Height-1))
@@ -1838,41 +1838,47 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                             }
                             slave1[ii*Width+j]=D[0]*(float)C[0]+D[1]*(float)C[1]+D[2]*(float)C[2]+D[3]*(float)C[3];
                         }
-                    }
-                }
+                    } // for j
+                } // for i
+                omp_set_lock(&f2_lock);
+                file2.seekp((streampos)bnum*dSize*Width*NewH, ios::beg); 
                 file2.write((char *)slave1,dSize*Width*NewH);
-            }
+                omp_unset_lock(&f2_lock);
+            } // if
             else //bnum == tempN-1
             {
                 int shift_w=0;
                 int last_H=Height-bnum*NewH+delth;  
                 complex<float>*bslave_2=new complex<float>[last_H*Width];
                 complex<float>*slave_2=new complex<float>[(last_H-delth)*Width];    
+
+                omp_set_lock(&f1_lock);
                 if(bnum==0) 
                 {
                     shift_w=0;
+                    file1.seekg(0, ios::beg);
                     file1.read((char *)bslave_2,dSize*(Height-bnum*NewH)*Width);
                 }   
                 else    
                 {
-                    shift_w=bnum*600-delth;
-
-                    file1.seekg(-2*delth*Width*dSize,ios::cur);
+                    file1.seekg(pos1-(streampos)2*delth*Width*dSize*bnum+(streampos)dSize*Width*temp_H*(bnum-1), ios::beg);
                     file1.read((char *)bslave_2,dSize*last_H*Width);        
+                    shift_w=bnum*600-delth;
                 }
+                omp_unset_lock(&f1_lock);
 
-                for(i=bnum*600; i< Height ;i++)
+                for(int i=bnum*600; i< Height ;i++)
                 {
                     int ii=i-bnum*600;
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
                         //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
                         
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    
-                        belta=dy-t2;                        
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    
+                        float belta=dy-t2;                        
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 &&t1<Height-1))
                         {
@@ -1920,7 +1926,11 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                         }
                     }
                 }
-                file2.write((char *)slave_2,sizeof(complex<float>)*Width*(Height-bnum*NewH));
+                
+                omp_set_lock(&f2_lock);
+                file2.seekp((streampos)dSize*Width*NewH*bnum, ios::beg);
+                file2.write((char *)slave_2, dSize*Width*(Height-bnum*NewH));
+                omp_unset_lock(&f2_lock);
                 //
                 delete[] slave_2;
                 delete[] bslave_2;
@@ -2075,17 +2085,15 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
     unsigned int halfp = p/2;
     if (l!=1)
     {
-        for (register int i=0;i<p;i++)
+        for (int i=0;i<p;i++)
         {
             A[halfl*p+i] *=0.5;
-            //A(halfl,i) *= .5;
             complA[halfl*p+i] *=.5;
-            //complA(halfl,i) *= .5;
         }
     }
     if (p!=1)
     {
-        for (register int j=0;j<l;j++)
+        for (int j=0;j<l;j++)
         {
             A[j*p+halfp] *=.5;
             complA[j*p+halfp] *=.5;
@@ -2140,11 +2148,9 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
     // ZeroMemory(ComplR,(l*factor*p*factor)*sizeof(float));
     memset(ComplR, 0, (l * factor * p * factor)*sizeof(float));
 
-    //for(register int m=0;m < winA1.linehi;m++)
-    for(register int m=0;m < winA1.BottomRight().y;m++)
+    for(int m=0;m < winA1.BottomRight().y;m++)
     {
-//      for(register int n=0;n<winA1.pixhi;n++)
-        for(register int n=0;n<winA1.BottomRight().x;n++)
+        for(int n=0;n<winA1.BottomRight().x;n++)
         {
             Result[m*p*factor+n] = A[m*l+n];
             Result[m*p*factor+(p*factor-halfp+n)] = A[m*p+halfp+n];
@@ -2161,12 +2167,12 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
     ifft2d(Result,ComplR,l*factor,p*factor);                // Result =ifft2d
     if (l==1 || p==1)
     {
-        for(register int aa = 0;aa<l*factor*p*factor;aa++)
+        for(int aa = 0;aa<l*factor*p*factor;aa++)
             Result[aa] *= (float)factor;
     }
     else
     {
-        for(register int aa=0;aa<l*factor*p*factor;aa++)
+        for(int aa=0;aa<l*factor*p*factor;aa++)
             Result[aa]  = Result[aa]*(float)factor*(float)factor;
     }
     //Result *= (real4(factor)*real4(factor));
