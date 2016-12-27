@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <omp.h>
 
 using namespace std;
 
@@ -146,12 +147,8 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         double c;
 
         //利用中心经纬度计算地面三维坐标  x0,y0,z0 为地面坐标
-        double x0=0,y0=0,z0=0;    
-        mImg.LonLat2Coordinate(x0,y0,z0);
-
-        //计算 
-        double R1;     //主图像斜距
-        double R2;     //辅图像斜距
+        double xx=0,yy=0,zz=0;    
+        mImg.LonLat2Coordinate(xx,yy,zz);
 
         //打开文件
 
@@ -173,45 +170,47 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
 
         long box_Width=lWidth;
         int step=box_Width/(5-1);   //每个点之间的近似间隔
-        double interp_position[5]={0,(double)step,2*(double)step,3*(double)step,(double)box_Width-1};   //插值点位置
-        double interp_slt[5];       //插值点处的斜距
-        double interp_inc[5];       //插值点处的入射角
-        double interp_base[5];      //插值点处的基线据
-
-        //分配缓存
-        double *slt_temp=new double[box_Width];
-        double *inc_temp=new double[box_Width];
-        double *base_temp=new double[box_Width];
-        double *position=new double [box_Width];
-        int ii;
-        for(ii=0;ii<box_Width;ii++)
-        {
-            position[ii]=ii;
-        }
-
         //多视处理的大小
         int w=lWidth/RanLooks;
         int h=lHeight/AziLooks;
 
-        //为输出数据分配空间
-        float *out_bas=new float[w];
-        float *out_inc=new float[w];
-        double *out_slt=new double[w];
-        memset(out_bas,0,sizeof(float)*w);
-        memset(out_inc,0,sizeof(float)*w);
-        memset(out_slt,0,sizeof(double)*w);
-
         int numrow=0;
         int numclm=0;
-        int j;
 
-        //主辅卫星的三维坐标
-        double satXm,satYm,satZm,satXs,satYs,satZs;
+        omp_lock_t f_lock;
+        omp_init_lock(&f_lock);
 
         //按行处理 
+#pragma omp parallel for schedule(static, AziLooks) firstprivate(numclm)
         for(long row=0;row<h*AziLooks;row++)
         {
             numclm++;
+
+            double interp_position[5]={0,(double)step,2*(double)step,3*(double)step,(double)box_Width-1};   //插值点位置
+            double interp_slt[5];       //插值点处的斜距
+            double interp_inc[5];       //插值点处的入射角
+            double interp_base[5];      //插值点处的基线据
+
+            //分配缓存
+            double *slt_temp=new double[box_Width];
+            double *inc_temp=new double[box_Width];
+            double *base_temp=new double[box_Width];
+            double *position=new double [box_Width];
+            for(int ii=0;ii<box_Width;ii++)
+            {
+                position[ii]=ii;
+            }
+
+            //为输出数据分配空间
+            float *out_bas=new float[w];
+            float *out_inc=new float[w];
+            double *out_slt=new double[w];
+            memset(out_bas,0,sizeof(float)*w);
+            memset(out_inc,0,sizeof(float)*w);
+            memset(out_slt,0,sizeof(double)*w);
+
+            //主辅卫星的三维坐标
+            double satXm,satYm,satZm,satXs,satYs,satZs;
 
             //计算子区的第一点对应的轨道坐标，并计算对应的三维坐标      
             double t0 = isAscend?(azimuth_t1_m+(lFirstRow+row)/prf-sensor_t0_m):(azimuth_tn_m+(originLine-lFirstRow-row)/prf-sensor_t0_m);     //成像时间
@@ -221,6 +220,8 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             satXm=mImg.Polyfit(xPolyCoef,t0,0);
             satYm=mImg.Polyfit(yPolyCoef,t0,0);
             satZm=mImg.Polyfit(zPolyCoef,t0,0);
+
+            double x0 = xx; double y0 = yy; double z0 = zz;
 
             //地面坐标
             mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
@@ -236,6 +237,10 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
                                  (satYm-satYs)*(satYm-satYs)+
                                  (satZm-satZs)*(satZm-satZs));
 
+            //计算 
+            double R1;     //主图像斜距
+            double R2;     //辅图像斜距
+
             //定义变量 
             double Rs;
             double Rp;
@@ -245,7 +250,7 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
 
 
             //先计算5个采样点数据
-            for(ii=0;ii<5;ii++)
+            for(int ii=0;ii<5;ii++)
             {
                 R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
                 mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1,x0,y0,z0,10);
@@ -273,7 +278,7 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             pwcint(interp_position,interp_base,5,position,base_temp,box_Width);
 
             //多视处理的结果
-            for(j=0;j<w*RanLooks;j++)
+            for(int j=0;j<w*RanLooks;j++)
             {
                 out_bas[j/RanLooks] += base_temp[j];
                 out_inc[j/RanLooks] += inc_temp[j];
@@ -282,36 +287,42 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             //方位多视处理，并输出
             if(numclm==AziLooks)
             {
-                for(j=0;j<w;j++)
+                for(int j=0;j<w;j++)
                 {
                     out_bas[j]=out_bas[j]/(AziLooks*RanLooks);
                     out_inc[j]=out_inc[j]/(AziLooks*RanLooks);
                     out_slt[j]=out_slt[j]/(AziLooks*RanLooks);
                 }
+                omp_set_lock(&f_lock);
+                int lnum = (row+1)/AziLooks;
+                file1.seekp((streampos)lnum*sizeof(double)*w, ios::beg);
                 file1.write((char *)out_slt, sizeof(double)*w);
+                file2.seekp((streampos)lnum*sizeof(float)*w, ios::beg);
                 file2.write((char *)out_inc, sizeof(float)*w);
+                file3.seekp((streampos)lnum*sizeof(float)*w, ios::beg);
                 file3.write((char *)out_bas, sizeof(float)*w);
+                omp_unset_lock(&f_lock);
 
                 memset(out_slt,0,sizeof(double)*w);
                 memset(out_inc,0,sizeof(float)*w);
                 memset(out_bas,0,sizeof(float)*w);
-                numclm=0;
+                numclm = 0;
             }
 
+            delete[] out_slt;
+            delete[] out_inc;
+            delete[] out_bas;
+            delete[] slt_temp;
+            delete[] inc_temp;
+            delete[] base_temp;
+            delete[] position;
         }  // end for 按行处理
+        omp_destroy_lock(&f_lock);
 
         //关闭文件
         file1.close();
         file2.close();
         file3.close();
-
-        delete[] slt_temp;
-        delete[] inc_temp;
-        delete[] base_temp;
-        delete[] position;
-        delete[] out_slt;
-        delete[] out_inc;
-        delete[] out_bas;
 
         //输出头文件
         CRMGHeader header(mImg.m_oHeader);                      //复制主图像头文件信息
@@ -319,14 +330,12 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         BaselineOut.replace(BaselineOut.find("rmg"), 3, "ldr");
         header.Save(BaselineOut);
 
-
         InAngleOut.replace(InAngleOut.find("rmg"), 3, "ldr");
         header.Save(InAngleOut);
 
         header.DataType=eFLOAT64;
         SlateOut.replace(SlateOut.find("rmg"), 3, "ldr");
         header.Save(SlateOut);
-
 }
 
 void CBaseline::AnalyseGeometry(string mfile,string sfile,
