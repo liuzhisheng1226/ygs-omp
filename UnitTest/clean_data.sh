@@ -7,7 +7,34 @@ DATA_ROOT_PATH="/home/liutao/workspace/ygs_data/"
 
 cd ${DATA_ROOT_PATH}
 
-if [ $1 = "TestIQCombineMakefile" ]
+if [ -z $1 ]
+then
+    read -p "do you want to deleta all data?(y/n) " yn
+        case $yn in
+            y|Y )
+                # clean all data
+                rm -rf SLC
+                mkdir -p SLC/cal
+                rm -rf coaReg
+                mkdir coaReg
+                rm -rf fineReg
+                mkdir fineReg
+                rm -rf coh
+                mkdir -p coh/amp coh/pha
+                rm -rf flatPha
+                mkdir flatPha
+                rm -f inSARgraphy.txt
+                rm -rf ROI
+                mkdir ROI
+                rm -rf CTI/BIR
+                mkdir CTI/BIR
+                rm -f CTI/*.ldr CTI/*.rmg CTI/vel.txt CTI/velFileOut.txt CTI/deformationOut/*
+            ;;
+            * )
+                exit
+            ;;
+        esac
+elif [ $1 = "TestIQCombineMakefile" ]
 then
     echo "delete TestIQCombineMakefile data"
     rm -f SLC/*.rmg SLC/*.ldr    
@@ -84,22 +111,5 @@ then
     echo "delete TestUonlinearMakefile data"
     rm -f CTI/deformationOut/* CTI/velFileOut.txt
 else
-    echo "deleta all data"
-    # clean all data
-    rm -rf SLC
-    mkdir -p SLC/cal
-    rm -rf coaReg
-    mkdir coaReg
-    rm -rf fineReg
-    mkdir fineReg
-    rm -rf coh
-    mkdir -p coh/amp coh/pha
-    rm -rf flatPha
-    mkdir flatPha
-    rm -f inSARgraphy.txt
-    rm -rf ROI
-    mkdir ROI
-    rm -rf CTI/BIR
-    mkdir CTI/BIR
-    rm -f CTI/*.ldr CTI/*.rmg CTI/vel.txt CTI/velFileOut.txt CTI/deformationOut/*
+    echo "unknown option!"
 fi
