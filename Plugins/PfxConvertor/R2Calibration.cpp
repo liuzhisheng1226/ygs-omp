@@ -39,6 +39,7 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
     string bufString;
     while (!feof(fp)) {
       fscanf(fp, "%s", buf);
+      if (feof(fp)) break;
       bufString = buf;
       if (bufString.find("<gains>") != string::npos) {
         fGain = atof((bufString.substr(7)).c_str());

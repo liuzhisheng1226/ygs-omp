@@ -38,6 +38,7 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         if(!strcmp(buf,"[numdiff]"))
         {
             fscanf(fp,"%s",buf);

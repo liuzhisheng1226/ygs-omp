@@ -40,10 +40,10 @@ void CPSC::Process()
     fp = fopen(filepha.c_str(), "r");
     while (!feof(fp)) {
         fscanf(fp, "%s", buf);
+        if (feof(fp)) break;
         filephase.push_back(buf);
         num++;
     }
-    --num;
     fclose(fp);
     if (num != numdiff) {
         cout << "num = " << num << " != numdiff\n";
@@ -53,6 +53,7 @@ void CPSC::Process()
     fp = fopen(filepara.c_str(), "r");
     while (!feof(fp)) {
         fscanf(fp, "%s", buf);
+        if (feof(fp)) break;
         filebase.push_back(buf);
         fscanf(fp, "%s", buf);
         fileinc.push_back(buf);
@@ -60,7 +61,6 @@ void CPSC::Process()
         fileslt.push_back(buf);
         num++;
     }
-    --num;
     for (string s : filebase) cout << s << " ";
     cout << endl;
     for (string s : fileinc) cout << s << " ";
@@ -133,6 +133,7 @@ void CPSC::CreatePSC(string filecoh,string filetime,string outFile,vector<string
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         time_c[temp_num]=atof(buf);
         temp_num++;
     }

@@ -62,6 +62,7 @@ void CIntegration::IntegrationPro(string file_edge,string file_edgeH,string file
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         if(!strcmp(buf,"[width]"))
         {
             fscanf(fp,"%s",buf);

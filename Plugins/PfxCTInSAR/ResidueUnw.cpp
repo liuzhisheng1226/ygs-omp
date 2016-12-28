@@ -36,6 +36,7 @@ void CResidueUnw::ResidueUnwPro(string fileIn,string fileinH,string fileout,stri
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         if(!strcmp(buf,"[numdiff]"))
         {
             fscanf(fp,"%s",buf);

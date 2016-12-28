@@ -38,6 +38,7 @@ void CMeanCoh::MeanCoherence(string fileIn,string fileOut,string fileOutH,int wi
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         filein.push_back(buf);
         num++;
     }

@@ -69,6 +69,7 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         if(!strcmp(buf,"[resolution]"))
         {
             fscanf(fp,"%s",buf);

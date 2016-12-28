@@ -97,6 +97,7 @@ void CPreOrb::LoadOrbfile()
     while(!feof(fp))
     {
         fscanf(fp,"%s",buffer);
+        if (feof(fp)) break;
         if(!strcmp(buffer,"[起始时间]"))
         {
             fscanf(fp, "%s",buffer);

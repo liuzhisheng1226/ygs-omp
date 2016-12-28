@@ -42,6 +42,7 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         if(!strcmp(buf,"[width]"))
         {
             fscanf(fp,"%s",buf);
@@ -359,6 +360,7 @@ void CDenuanayNetwork::CTInSAR_incre(string filecoh,string filetime,vector<strin
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         time_c[temp_num]=atof(buf)/365000;      //把时间换成年，形变量换成毫米
         temp_num++;
     }
@@ -610,8 +612,8 @@ void CDenuanayNetwork::CTInSAR_incre(string filecoh,string filetime,vector<strin
     while(!feof(fp))
     {
         fscanf(fp,"%s",buf);
+        if (feof(fp)) break;
         time_c[temp_num]=atof(buf)/356000;
-        //time_c[temp_num]=atof(buf);
         temp_num++;
     }
     fclose(fp); 
