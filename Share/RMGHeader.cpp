@@ -234,6 +234,7 @@ bool CRMGHeader::Load(string lpFilename)
     //GetPrivateProfileString(CONST_SECTION_HEADER,"rLooks",0,buffer,buffer_size,lpFilename.c_str());this->rLooks=atoi(buffer);
 
 // #pragma region updateInfo
+    GetPrivateProfileString(CONST_SECTION_EXTENTION,"RegistrationType",0,buffer,buffer_size,lpFilename.c_str());this->Registration.registrType =atoi(buffer);
     GetPrivateProfileString(CONST_SECTION_EXTENTION,"RegistrationAziOffset",0,buffer,buffer_size,lpFilename.c_str());this->Registration.azimuthOffst =atof(buffer);
     GetPrivateProfileString(CONST_SECTION_EXTENTION,"RegistrationRngOffset",0,buffer,buffer_size,lpFilename.c_str());this->Registration.rangeOffset =atof(buffer);
 
