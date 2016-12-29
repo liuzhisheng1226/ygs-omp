@@ -76,29 +76,33 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
 
     if(inImg.m_oHeader.DataType == eCINT16)
     {
-//#pragma omp parallel for ordered shared(inFile, outFile)
+        omp_lock_t r_lock, w_lock;
+        omp_init_lock(&r_lock);
+        omp_init_lock(&w_lock);
+
+#pragma omp parallel for
         for(int i=0;i<iRows;i++)
         {
             complex<float> *outData = new complex<float>[iCols];
             complex <short> *indata = new complex<short>[iCols];
-//#pragma omp ordered
-            {
-                inFile.read((char *)indata,sizeof(complex<short>)*iCols);
-            }
-#pragma omp parallel for
+            omp_set_lock(&r_lock);
+            inFile.seekg((streampos)i*sizeof(complex<short>)*iCols);
+            inFile.read((char *)indata,sizeof(complex<short>)*iCols);
+            omp_unset_lock(&r_lock);
             for(int j=0;j<iCols;j++)
             {
                 complex<float> temp = complex<float>(indata[j].real(),indata[j].imag());
                 outData[j] = temp/gainVestor[j];            //norm(temp)/gainVestor.begin()[j]/gainVestor.begin()[j];               
             }
+            omp_set_lock(&w_lock);
+            outFile.seekp((streampos)i*sizeof(complex<float>)*iCols);
+            outFile.write((char *)outData,sizeof(complex<float>)*iCols);
+            omp_unset_lock(&w_lock);
             delete[] indata;
-
-//#pragma omp ordered 
-            {
-                outFile.write((char *)outData,sizeof(complex<float>)*iCols);
-            }
             delete[] outData;
         }
+        omp_destroy_lock(&r_lock);
+        omp_destroy_lock(&w_lock);
     }//c-short
     else if(eCFLOAT32 == inImg.m_oHeader.DataType)
         cout << "don't support float data yet\n";
