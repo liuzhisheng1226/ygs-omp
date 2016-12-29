@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <omp.h>
 
-#define _FILE_OFFSET_BITS 64
+//#define _FILE_OFFSET_BITS 64
 
 CRegistrCoarse::CRegistrCoarse(void)
 {
@@ -125,25 +125,30 @@ void CRegistrCoarse::Coarse(string lpDataFullname1,string lpHdrFullname1,string 
 //  CoarseOffset(image1,image2,colOffset,rowOffset);
 
     // 辅图像的公共区域输出 
-    FILE* fp1=fopen(image2.m_lpFullname.c_str(),"rb");
-    FILE* fp2=fopen(lpDataExport.c_str(),"wb");
-    unsigned int sRow;
+    ifstream fp1(image2.m_lpFullname, ios::in | ios::binary);
+    ofstream fp2(lpDataExport, ios::out | ios::binary);
+
+    omp_lock_t r_lock, w_lock;
+    omp_init_lock(&r_lock);
+    omp_init_lock(&w_lock);
+    
     if(eCINT16 == image2.m_oHeader.DataType)
     {
-        complex<INT16> *data=new complex<INT16>[image2.m_oHeader.Sample];
-        complex<INT16> *outdata=new complex<INT16>[image1.m_oHeader.Sample];
-
-        //fseek(fp1,((windowRect.top+rowOffset)*image2.m_oHeader.Sample+windowRect.left+colOffset)*sizeof(complex<INT16>),SEEK_SET);
+#pragma omp parallel for
         for(int i=0;i<image1.m_oHeader.Line;i++)
         {
+            complex<INT16> *data=new complex<INT16>[image2.m_oHeader.Sample];
+            complex<INT16> *outdata=new complex<INT16>[image1.m_oHeader.Sample];
             memset(data,0,sizeof(complex<INT16>)*image2.m_oHeader.Sample);
             memset(outdata,0,sizeof(complex<INT16>)*image1.m_oHeader.Sample);
-            sRow = i+rowOffset;
+
+            unsigned int sRow = i+rowOffset;
             if(sRow>=0 && sRow<image2.m_oHeader.Line)
             {
-                fseeko(fp1,(sRow*image2.m_oHeader.Sample)*sizeof(complex<INT16>),SEEK_SET);
-                fread(data,sizeof(complex<INT16>),image2.m_oHeader.Sample,fp1);
-#pragma omp parallel for
+                omp_set_lock(&r_lock);
+                fp1.seekg((streampos)(sRow*image2.m_oHeader.Sample)*sizeof(complex<INT16>), ios::beg);
+                fp1.read((char *)data, sizeof(complex<INT16>)*image2.m_oHeader.Sample);
+                omp_unset_lock(&r_lock);
                 for(int j=0;j<image1.m_oHeader.Sample;j++)
                 {
                     int colS = j + colOffset;
@@ -153,26 +158,30 @@ void CRegistrCoarse::Coarse(string lpDataFullname1,string lpHdrFullname1,string 
                         outdata[j] = data[colS];
                 }
             }
-            fwrite(outdata,sizeof(complex<INT16>),image1.m_oHeader.Sample,fp2);
+            omp_set_lock(&w_lock);
+            fp2.seekp((streampos)i*sizeof(complex<INT16>)*image1.m_oHeader.Sample, ios::beg);
+            fp2.write((char *)outdata, sizeof(complex<INT16>)*image1.m_oHeader.Sample);
+            omp_unset_lock(&w_lock);
+            delete[] data;
+            delete[] outdata;
         }   
-        delete[] data;
-        delete[] outdata;
     }
     else if(eCFLOAT32 == image2.m_oHeader.DataType)
     {
-        complex<float> *data=new complex<float>[image2.m_oHeader.Sample];
-        complex<float> *outdata=new complex<float>[image1.m_oHeader.Sample];
-
+#pragma omp parallel for
         for(int i=0;i<image1.m_oHeader.Line;i++)
         {
+            complex<float> *data=new complex<float>[image2.m_oHeader.Sample];
+            complex<float> *outdata=new complex<float>[image1.m_oHeader.Sample];
             memset(data,0,sizeof(complex<float>)*image2.m_oHeader.Sample);
             memset(outdata,0,sizeof(complex<float>)*image1.m_oHeader.Sample);
-            sRow = i+rowOffset;
+            unsigned int sRow = i+rowOffset;
             if(sRow>=0 && sRow<image2.m_oHeader.Line)
             {
-                fseeko(fp1,(sRow*image2.m_oHeader.Sample)*sizeof(complex<float>),SEEK_SET);
-                fread(data,sizeof(complex<float>),image2.m_oHeader.Sample,fp1);
-#pragma omp parallel for
+                omp_set_lock(&r_lock);
+                fp1.seekg((streampos)(sRow*image2.m_oHeader.Sample)*sizeof(complex<float>), ios::beg);
+                fp1.read((char *)data, sizeof(complex<float>)*image2.m_oHeader.Sample);
+                omp_unset_lock(&r_lock);
                 for(int j=0;j<image1.m_oHeader.Sample;j++)
                 {
                     int colS = j + colOffset;
@@ -182,14 +191,21 @@ void CRegistrCoarse::Coarse(string lpDataFullname1,string lpHdrFullname1,string 
                         outdata[j] = data[colS];
                 }
             }
-            fwrite(outdata,sizeof(complex<float>),image1.m_oHeader.Sample,fp2);
+            //fwrite(outdata,sizeof(complex<float>),image1.m_oHeader.Sample,fp2);
+            omp_set_lock(&w_lock);
+            fp2.seekp((streampos)i*sizeof(complex<float>)*image1.m_oHeader.Sample, ios::beg);
+            fp2.write((char *)outdata, sizeof(complex<float>)*image1.m_oHeader.Sample);
+            omp_unset_lock(&w_lock);
+            delete[] data;
+            delete[] outdata;
         }   
-        delete[] data;
-        delete[] outdata;
     }
     
-    fclose(fp1);
-    fclose(fp2);
+    omp_destroy_lock(&r_lock);
+    omp_destroy_lock(&w_lock);
+    
+    fp1.close();
+    fp2.close();
 
     CRMGHeader header(image2.m_oHeader);                        //复制主图像头文件信息
     header.Registration.isRegistr=true;
