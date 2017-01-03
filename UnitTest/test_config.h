@@ -12,6 +12,7 @@
 
 using namespace std;
 
-string DATA_ROOT_PATH = "/home/liutao/workspace/ygs_data/";
+//string DATA_ROOT_PATH = "/home/liutao/workspace/ygs_data/";
+string DATA_ROOT_PATH = "/dev/shm/ygs_data/";
 
 #endif /* TEST_CONFIG_H */

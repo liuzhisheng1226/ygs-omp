@@ -4,14 +4,14 @@
 #            command     $1
 
 #DATA_ROOT_PATH="/home/liutao/workspace/ygs_data/"
-./clean_data.sh
+./clean_data.sh /dev/shm/ygs_data/
 
 TEST_PATH="/home/liutao/workspace/github/ygs-omp/UnitTest"
 # run all tests.
 cd ${TEST_PATH}
 # date: YYYYmmddHHMMSS
 date=$(date +%Y%m%d%H%M%S) 
-logfile="log/log_omp_${1}_${date}"
+logfile="/home/liutao/workspace/ygs_log/omp/log_omp_${1}_${date}"
 touch $logfile
 
 export OMP_NUM_THREADS=$1
