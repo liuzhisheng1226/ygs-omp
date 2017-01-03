@@ -1,5 +1,4 @@
 #include "../Plugins/PfxCTInSAR/PSC.h"
-#include "test_config.h"
 #include <iostream>
 
 void testPSC() {
