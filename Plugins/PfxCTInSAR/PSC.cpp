@@ -1,4 +1,5 @@
 #include "PSC.h"
+#include "../../UnitTest/test_config.h"
 #include <iostream>
 #include <fstream>
 #include <cstdio>
@@ -10,11 +11,11 @@ CPSC::CPSC(void)
 
 void CPSC::Process()
 {
-    string filecoh = "/home/liutao/workspace/ygs_data/CTI/CTmusk.rmg";
-    string filetime = "/home/liutao/workspace/ygs_data/CTI/BT.txt";
-    string outFile = "/home/liutao/workspace/ygs_data/CTI/PSC.rmg";
-    string filepha = "/home/liutao/workspace/ygs_data/CTI/phase.txt";
-    string filepara = "/home/liutao/workspace/ygs_data/CTI/BIR.txt";
+    string filecoh = DATA_ROOT_PATH + "CTI/CTmusk.rmg";
+    string filetime = DATA_ROOT_PATH + "CTI/BT.txt";
+    string outFile = DATA_ROOT_PATH + "CTI/PSC.rmg";
+    string filepha = DATA_ROOT_PATH + "CTI/phase.txt";
+    string filepara = DATA_ROOT_PATH + "CTI/BIR.txt";
 
     CRMGImage image(filecoh);
     int height = image.m_oHeader.Line;
