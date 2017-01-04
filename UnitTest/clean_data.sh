@@ -1,13 +1,40 @@
 #!/bin/bash
 
 # usage: ./clean_data.sh path makefile
-#           command        $1   $2
+#           command        path   $mfname
 
-DATA_ROOT_PATH="$1"
+path=""
+mfname=""
 
-cd ${DATA_ROOT_PATH}
+if [ -z $1 ]
+then
+    echo "data root path:"
+    read path
+else
+    path=$1
+fi
+
+if [ -z $path ] || [ ! -d $path ] 
+then
+    echo "need valid path!"
+    exit
+fi
 
 if [ -z $2 ]
+then
+    echo "makefile name:"
+    read mfname
+else
+    mfname=$2
+fi
+
+cd $path
+
+if [ -z $mfname ]
+then
+    echo "need makefile name!"
+    exit
+elif [ $mfname = "all" ]
 then
     read -p "do you want to deleta all data?(y/n) " yn
         case $yn in
@@ -29,84 +56,85 @@ then
                 rm -rf CTI/BIR
                 mkdir CTI/BIR
                 rm -f CTI/*.ldr CTI/*.rmg CTI/vel.txt CTI/velFileOut.txt CTI/deformationOut/*
+                echo "all outdata in $path deleted!"
             ;;
             * )
                 exit
             ;;
         esac
-elif [ $2 = "TestIQCombineMakefile" ]
+elif [ $mfname = "TestIQCombineMakefile" ]
 then
     echo "delete TestIQCombineMakefile data"
     rm -f SLC/*.rmg SLC/*.ldr    
-elif [ $2 = "TestR2CalibrationMakefile" ]
+elif [ $mfname = "TestR2CalibrationMakefile" ]
 then
     echo "delete TestR2CalibrationMakefile data"
     rm -f SLC/cal/*
-elif [ $2 = "TestInterferogramMapsMakefile" ]
+elif [ $mfname = "TestInterferogramMapsMakefile" ]
 then
     echo "delete TestInterferogramMapsMakefile data"
     rm -f inSARgraphy.txt
-elif [ $2 = "TestRegistrCoarseMakefile" ]
+elif [ $mfname = "TestRegistrCoarseMakefile" ]
 then
     echo "delete TestRegistrCoarseMakefile data"
     rm -f coaReg/*
-elif [ $2 = "TestRegistrFineMakefile" ]
+elif [ $mfname = "TestRegistrFineMakefile" ]
 then
     echo "delete TestRegistrFineMakefile data"
     rm -f fineReg/*.rmg fineReg/*.ldr
-elif [ $2 = "TestPreOrbImportMakefile" ]
+elif [ $mfname = "TestPreOrbImportMakefile" ]
 then
     echo "delete TestPreOrbImportMakefile data"
     rm -f fineReg/*.orb
-elif [ $2 = "TestRoiSelectProMakefile" ]
+elif [ $mfname = "TestRoiSelectProMakefile" ]
 then
     echo "delete TestRoiSelectProMakefile data"
     rm -f ROI/*
-elif [ $2 = "TestFlatPhaseMakefile" ]
+elif [ $mfname = "TestFlatPhaseMakefile" ]
 then
     echo "delete TestFlatPhaseMakefile data"
     rm -f flatPha/*
-elif [ $2 = "TestCoherenceEstMakefile" ]
+elif [ $mfname = "TestCoherenceEstMakefile" ]
 then
     echo "delete TestCoherenceEstMakefile data"
     rm -f coh/*.rmg coh/*.ldr
-elif [ $2 = "TestComplexProMakefile" ]
+elif [ $mfname = "TestComplexProMakefile" ]
 then
     echo "delete TestComplexProMakefile data"
     rm -f coh/amp/* coh/pha/*
-elif [ $2 = "TestMeanCohMakefile" ]
+elif [ $mfname = "TestMeanCohMakefile" ]
 then
     echo "delete TestMeanCohMakefile data"
     rm -f CTI/meanCoh.*
-elif [ $2 = "TestMuskMakefile" ]
+elif [ $mfname = "TestMuskMakefile" ]
 then
     echo "delete TestMuskMakefile data"
     rm -f CTI/CTmusk.*
-elif [ $2 = "TestBaselineMakefile" ]
+elif [ $mfname = "TestBaselineMakefile" ]
 then
     echo "delete TestBaselineMakefile data"
     rm -f CTI/BIR/*
-elif [ $2 = "TestPSCMakefile" ]
+elif [ $mfname = "TestPSCMakefile" ]
 then
     echo "delete TestPSCMakefile data"
     rm -f CTI/PSC.*
-elif [ $2 = "TestDeluanayMakefile" ]
+elif [ $mfname = "TestDeluanayMakefile" ]
 then
     echo "delete TestDeluanayMakefile data"
     rm -f CTI/edge.*
-elif [ $2 = "TestIntegrationMakefile" ]
+elif [ $mfname = "TestIntegrationMakefile" ]
 then
     echo "delete TestIntegrationMakefile data"
     rm -f CTI/intregatePoint.* CTI/vel.txt
-elif [ $2 = "TestResidueMakefile" ]
+elif [ $mfname = "TestResidueMakefile" ]
 then
     echo "delete TestResidueMakefile data"
     echo "TestResidueMakefile is special, run ./test.sh TestIntegrationMakefile to reset the data"
-elif [ $2 = "TestResidueUnwMakefile" ]
+elif [ $mfname = "TestResidueUnwMakefile" ]
 then
     echo "delete TestResidueUnwMakefile data"
     rm -f CTI/unwrapPoint.*
-elif [ $2 = "TestUonlinearMakefile" ]
+elif [ $mfname = "TestUonlinearMakefile" ]
 then
     echo "delete TestUonlinearMakefile data"
     rm -f CTI/deformationOut/* CTI/velFileOut.txt
