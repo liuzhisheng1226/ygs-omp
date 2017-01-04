@@ -33,10 +33,6 @@ cmpfiles()
             echo "compare $file1 with $file2 ..."
             cmp_res=$(cmp -s $file1 $file2 && echo "same" || echo "diff")
             echo $cmp_res
-            if [ $cmp_res = "diff" ]
-            then
-                exit
-            fi
         else
             echo "$file2 doesn't exist!"
             exit
