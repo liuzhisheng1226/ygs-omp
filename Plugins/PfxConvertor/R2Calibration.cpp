@@ -68,7 +68,7 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
         cout << "error open image inFile\n";
         return;
     }
-    ofstream outFile(lpExport.c_str(), ios::out | ios::binary | ios::app);
+    ofstream outFile(lpExport.c_str(), ios::out | ios::binary);
     if (!outFile.is_open()) {
         cout << "open out file outFile failed\n";
         return;
@@ -86,7 +86,7 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
             complex<float> *outData = new complex<float>[iCols];
             complex <short> *indata = new complex<short>[iCols];
             omp_set_lock(&r_lock);
-            inFile.seekg((streampos)i*sizeof(complex<short>)*iCols);
+            inFile.seekg((streampos)i*sizeof(complex<short>)*iCols, ios::beg);
             inFile.read((char *)indata,sizeof(complex<short>)*iCols);
             omp_unset_lock(&r_lock);
             for(int j=0;j<iCols;j++)
@@ -95,7 +95,7 @@ void CR2Calibration::R2CalibrationPro(string lpImport,string lpLutfile,string lp
                 outData[j] = temp/gainVestor[j];            //norm(temp)/gainVestor.begin()[j]/gainVestor.begin()[j];               
             }
             omp_set_lock(&w_lock);
-            outFile.seekp((streampos)i*sizeof(complex<float>)*iCols);
+            outFile.seekp((streampos)i*sizeof(complex<float>)*iCols, ios::beg);
             outFile.write((char *)outData,sizeof(complex<float>)*iCols);
             omp_unset_lock(&w_lock);
             delete[] indata;
