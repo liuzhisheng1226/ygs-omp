@@ -46,6 +46,9 @@ if [ -z $mfname ]
 then
     echo "need makefile name!"
     exit
+elif [ $mfname = "ori" ]
+then
+    cmpfiles ori/*
 elif [ $mfname = "TestIQCombineMakefile" ]
 then
     echo "compare TestIQCombineMakefile data"
