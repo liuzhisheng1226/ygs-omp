@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <omp.h>
+
 using namespace std;
 
 CRegistrFine::CRegistrFine(void)
@@ -40,7 +42,6 @@ void CRegistrFine::Batch()
         //,  m_aryStrs.GetAt(6)
         /*,  m_aryStrs.GetAt(7) );*/
 }
-
 
 void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                         string lpDataIn2,string lpHdrIn2,
@@ -158,47 +159,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             //在行的方向上考虑3个窗口
             for(j=0;j<3;j++)
             {
-                //进度条
-                /*
-                wndProgress.StepIt();
-                wndProgress.PeekAndPump();
-                if (wndProgress.Cancelled()) 
-                {
-                    AfxMessageBox("进程被人为中断!");
-                    file1.close();
-                    file2.close();
-                    
-                    delete[] master;
-                    delete[] slave;
-                    delete[] mbox;
-                    delete[] sbox;
-                    delete[] bigslave;
-                    delete[] xs;
-                    delete[] ys;
-                    delete[] xshift;
-                    delete[] yshift;
-                    delete[] fcof;
-
-                    delete[] master_block;
-                    delete[] slave_block;
-
-                    delete[] centerx;
-                    delete[] centery;
-                        
-                    wndProgress.DestroyWindow();                
-                    return;
-                }
-                */
-
                 //确定窗口的位置
                 int tempstep_a=numboxAzm/3; //近似3等分的位置
                 int tempstep_r=numboxRng/3; //近似3等分的位置
                 //读取主图像窗口数据
-                //change seek() from MFC to C++
-                // file1.seekg(((centerx[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2)*Width+
-                            // (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2))*
-                           // sizeof(complex<short>),
-                           // CFile::begin);
                 file1.seekg(((centerx[(j * tempstep_a + 2)*numboxRng + (i + 1)*tempstep_r - 1] - boxsize1 / 2)*Width +
                              (centery[(j * tempstep_a + 2)*numboxRng + (i + 1)*tempstep_r - 1] - boxsize1 / 2))*
                             sizeof(complex<short>),
@@ -206,23 +170,16 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 for(int k=0;k<boxsize1;k++)
                 {
                     file1.read((char *)(master+k*boxsize1),boxsize1*sizeof(complex<short>));
-                    // file1.seekg((Width-boxsize1)*sizeof(complex<short>),ios::cur);
                     file1.seekg((Width - boxsize1)*sizeof(complex<short>), ios::cur);
                 }
                 //读取幅图像窗口数据
-                // file2.seekg(((centerx[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize3/2)*Width+
-                            // (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize3/2))*
-                           // sizeof(complex<short>),
-                           // CFile::begin);
                 file2.seekg(((centerx[(j * tempstep_a + 2)*numboxRng + (i + 1)*tempstep_r - 1] - boxsize3 / 2)*Width +
                              (centery[(j * tempstep_a + 2)*numboxRng + (i + 1)*tempstep_r - 1] - boxsize3 / 2))*
                             sizeof(complex<short>),
                             ios::beg);
                 for(int k=0;k<boxsize3;k++)
                 {
-                    // file2.Read(slave+k*boxsize3,boxsize3*sizeof(complex<short>));
                     file2.read((char *)(slave + k * boxsize3), boxsize3 * sizeof(complex<short>));
-                    //file2.seekg((Width-boxsize3)*sizeof(complex<short>),ios::cur);
                     file2.seekg((Width - boxsize3)*sizeof(complex<short>), ios::cur);
                 }
 
@@ -239,8 +196,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                     {
                         temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                        //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()+
-                        //     master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()+master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag());//
                         msum=msum+temp;
                         m2sum=m2sum+temp*temp;
                     }
@@ -271,13 +226,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                             {
                                 temp= abs(complex<float>(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].real(),slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].imag()));
-                                //sqrt(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].real()*slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].real()+
-                                //      slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].imag()*slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].imag());//
                                 ssum=ssum+temp;
                                 s2sum=s2sum+temp*temp;
                                 mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
-                                //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()+
-                                //           master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())*temp;       //
                             }
                         }
                         ssum=ssum/(box*box);
@@ -322,7 +273,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 {
                     maxtemp=z_cof[j];
                     temp_y[i]=z1[j];
-                    //temp_x=tempnn[j];
                 }
             }
             if(maxtemp < 0.1) {temp_y[i]=0;}//temp_x=0;}
@@ -375,37 +325,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             //距离向德窗口
             for(j=0;j<numboxRng;j++)
             {
-                //进度条
-                /*
-                wndProgress.StepIt();
-                wndProgress.PeekAndPump();
-                if (wndProgress.Cancelled()) 
-                {
-                    AfxMessageBox("进程被人为中断!");
-                    file1.close();
-                    file2.close();
-                    
-                    delete[] master;
-                    delete[] slave;
-                    delete[] mbox;
-                    delete[] sbox;
-                    delete[] bigslave;
-                    delete[] xs;
-                    delete[] ys;
-                    delete[] xshift;
-                    delete[] yshift;
-                    delete[] fcof;
-
-                    delete[] master_block;
-                    delete[] slave_block;
-                    delete[] centerx;
-                    delete[] centery;
-                    
-                    wndProgress.DestroyWindow();                
-                    return;
-                }
-                */
-
                 //临时变量
                 double temp;
                 double temp1,temp2,temp3;
@@ -447,8 +366,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
                             temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())); 
-                            //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                            //     +master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag());//
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
                         }
@@ -471,13 +388,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
                                     temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
-                                    //sqrt(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()
-                                    //+ slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()); //
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
                                     mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
-                                    //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                                    //+master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())*temp;  //abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])
                                 }
                             }
                             ssum=ssum/(box*box);
@@ -533,8 +446,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
                             temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                            //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                            //+ master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()); //
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
                         }
@@ -557,13 +468,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
                                     temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
-                                    //sqrt(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()
-                                    //+ slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag());//
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
                                     mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
-                                    //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                                    //+ master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())*temp;  //
                                 }
                             }
                             ssum=ssum/(box*box);
@@ -619,8 +526,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
                             temp= abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                            //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                            //+ master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag());//
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
                         }
@@ -643,13 +548,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
                                     temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
-                                    //sqrt(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real()
-                                    //+ slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()*slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag());//
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
                                     mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
-                                    //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()
-                                    //+ master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())*temp;      //
                                 }
                             }
                             ssum=ssum/(box*box);
@@ -708,8 +609,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)
                     {
                         temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                        //sqrt(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real()+
-                        //  master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()*master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag());//
                         mbox[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]=temp;
                         msum=msum+temp;
                         m2sum=m2sum+temp*temp;
@@ -903,8 +802,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                     {
                         temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
-                        //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
-                        
                         msum=msum+temp;
                         m2sum=m2sum+temp*temp;
                     }
@@ -935,12 +832,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                             {
                                 temp = abs(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)]);
-                                //temp= abs(complex<float>(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].real(),slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)].imag()));
-                                    
                                 ssum=ssum+temp;
                                 s2sum=s2sum+temp*temp;
                                 mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
-                                //mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;                                    
                             }
                         }
                         ssum=ssum/(box*box);
@@ -1077,7 +971,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag())); 
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1100,11 +993,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp = abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum=mssum+ abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
                                 }
                             }
@@ -1160,7 +1051,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1183,11 +1073,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp = abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);  
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+ abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2])*temp;
                                 }
                             }
@@ -1243,7 +1131,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     {
                         for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                         {
-                            //temp= abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                             temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                             msum=msum+temp;
                             m2sum=m2sum+temp*temp;
@@ -1266,11 +1153,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                             {
                                 for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                                 {
-                                    //temp= abs(complex<float>(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].real(),slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)].imag()));
                                     temp =abs(slave[(cc+boxsize4/2+ee)*boxsize4+(dd+boxsize4/2+ff)]);
                                     ssum=ssum+temp;
                                     s2sum=s2sum+temp*temp;
-                                    //mssum=mssum+abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()))*temp;
                                     mssum = mssum + abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                                 }
                             }
@@ -1311,9 +1196,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 {
                     for(dd=-boxsize2/2;dd<=boxsize2/2;dd++)
                     {
-                        //sbox[(cc+boxsize2/2)*boxsize2+dd+boxsize2/2]=complex<float>(
-                        //                          slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]].real(),
-                        //                          slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]].imag());
                         sbox[(cc+boxsize2/2)*boxsize2+dd+boxsize2/2]= slave[(cc+boxsize4/2 +xs[i*numboxRng+j])*boxsize4+dd+boxsize4/2 +ys[i*numboxRng+j]];
                     }
                 }
@@ -1330,7 +1212,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 {
                     for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)
                     {
-                        //temp = abs(complex<float>(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].real(),master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2].imag()));
                         temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                         mbox[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]=temp;
                         msum=msum+temp;
@@ -1481,7 +1362,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         }
     }
     meanfcof=meanfcof/tempn;
-    //if(meanfcof<0.1) meanfcof=0.1;
 
     stdvarfcof=stdvarfcof/tempn;
     stdvarfcof -=meanfcof*meanfcof; //方差
@@ -1569,11 +1449,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
 void CRegistrFine::Get_para_gcp(float *basePosX,float *basePosY,float *slavePosX,float *slavePosY,CSpMatrix<double> &colCoef,CSpMatrix<double> &rowCoef,int pointN)
 {
     const int coefNo =6;
-    //
-    //CSpMatrix<double> a1(coefNo,coefNo);
-    //CSpMatrix<double> a2(coefNo,pointN);
-    //CSpMatrix<double> a3(coefNo,pointN);
-    
     CSpMatrix<double> L(pointN,coefNo);
     CSpMatrix<double> Lx(pointN,1);
     CSpMatrix<double> Ly(pointN,1);
@@ -1599,7 +1474,6 @@ void CRegistrFine::Get_para_gcp(float *basePosX,float *basePosY,float *slavePosX
     return;
 }
 
-
 void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                             string lpDataIn2,string lpHdrIn2,
                             string lpDataOut,string lpHdrOut,
@@ -1608,35 +1482,11 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
         
     CRMGImage mImg(lpDataIn1,lpHdrIn1);
     CRMGImage sImg(lpDataIn2,lpHdrIn2);
-    //CSpMatrix<double> xMtxCoef(6,1);                  方位向拟合矩阵
-    //CSpMatrix<double> yMtxCoef(6,1);                  距离向拟合矩阵
     CSpMatrix<double> L(1,6);
     /******test************/
     int Width= sImg.m_oHeader.Sample;
     int Height=sImg.m_oHeader.Line;
     int datatype=sImg.m_oHeader.DataType;
-
-    /*
-    CFile file1,file2;
-    CFileException ex1;
-    if(!file1.Open(lpDataI2,CFile::modeRead | CFile::shareDenyWrite,ex1))
-    {
-        TCHAR szError[1024];
-        ex1.GetErrorMessage(szError, 1024);
-        AfxMessageBox(szError);
-        return ;
-    }
-    if(!file2.Open(lpDataOutCFile::modeWrite |
-                   CFile::shareExclusive | CFile::modeCreate, &ex1))
-    {
-        TCHAR szError[1024];
-        ex1.GetErrorMessage(szError,1024);
-        AfxMessageBox(szError);
-        return;
-    }
-    */
-
-
 
     ifstream file1(lpDataIn2, ios::in |ios::binary);
     if (!file1.is_open()) {
@@ -1648,9 +1498,6 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
         cout << "error open output image \n";
         exit(1);
     }
-    // CProgressBar wndProgress(Height,"正在进行辅图像重采用...");
-    
-    // wndProgress.SetStep(1);
     printf("ReSampling...\n");
     int i,j;
     //
@@ -1693,28 +1540,10 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 //
                 for(i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
                 {
-                    /*
-                    wndProgress.StepIt();
-                    wndProgress.PeekAndPump();
-                    if (wndProgress.Cancelled()) 
-                    {
-                        AfxMessageBox("quxiao!");
-                        file1.close();
-                        file2.close();
-                        _unlink(lpDataIn2);
-
-                        delete[] slave1;
-                        delete[] bslave;                            
-
-                        wndProgress.DestroyWindow();                
-                        return;
-                    }
-                    */
                     int ii=i-bnum*600;
 
                     for(j=0;j<Width;j++)
                     {
-                        //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
                         dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
                         dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
 
@@ -1793,31 +1622,9 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
 
                 for(i=bnum*600; i< Height ;i++)
                 {
-                    /*
-                    wndProgress.StepIt();
-                    wndProgress.PeekAndPump();
-                    if (wndProgress.Cancelled()) 
-                    {
-                        AfxMessageBox("cancel!");
-                        file1.close();
-                        file2.close();
-                        _unlink(lpDataOut);
-
-                        delete[] slave1;
-                        delete[] bslave;
-
-                        delete[] slave_2;
-                        delete[] bslave_2;                      
-
-                        wndProgress.DestroyWindow();                
-                        return;
-                    }
-                    */
-
                     int ii=i-bnum*600;
                     for(j=0;j<Width;j++)
                     {
-                        //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
                         dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
                         dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
                         
@@ -1911,28 +1718,10 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 //
                 for(i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
                 {
-                    /*
-                    wndProgress.StepIt();
-                    wndProgress.PeekAndPump();
-                    if (wndProgress.Cancelled()) 
-                    {
-                        AfxMessageBox("quxiao!");
-                        file1.close();
-                        file2.close();
-                        _unlink(lpDataIn2);
-
-                        delete[] slave1;
-                        delete[] bslave;                            
-
-                        wndProgress.DestroyWindow();                
-                        return;
-                    }
-                    */
                     int ii=i-bnum*600;
 
                     for(j=0;j<Width;j++)
                     {
-                        //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
                         dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
                         dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
 
@@ -2011,30 +1800,9 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
 
                 for(i=bnum*600; i< Height ;i++)
                 {
-                    /*
-                    wndProgress.StepIt();
-                    wndProgress.PeekAndPump();
-                    if (wndProgress.Cancelled()) 
-                    {
-                        AfxMessageBox("cancel!");
-                        file1.close();
-                        file2.close();
-                        _unlink(lpDataOut);
-
-                        delete[] slave1;
-                        delete[] bslave;
-
-                        delete[] slave_2;
-                        delete[] bslave_2;                      
-
-                        wndProgress.DestroyWindow();                
-                        return;
-                    }   
-                    */
                     int ii=i-bnum*600;
                     for(j=0;j<Width;j++)
                     {
-                        //L.Set(0,0,1);L.Set(0,1,j);L.Set(0,2,i);L.Set(0,3,j*j);L.Set(0,4,i*j);L.Set(0,5,i*i);
                         dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
                         dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
                         
@@ -2101,8 +1869,6 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
 // #pragma endregion Resample cFloat
     file1.close();
     file2.close();
-    // wndProgress.DestroyWindow();
-
     /***************end Test*********************/
 
 // #pragma region New Header export
@@ -2121,11 +1887,6 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
 {
     if(eCFLOAT32 == dtype)
     {
-        /*
-        CopyFile(inMfile,outMfile,FALSE);
-        CopyFile(inHdrfile,outHdrfile,FALSE);
-        */
-
         //CopyFile is API of copy file in Win
         //by liuhuan 2015/4/9
         char cmd[128];
@@ -2139,33 +1900,9 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
     }
     else if(eCINT16 == dtype)
     {
-        /*
-        CFile mFileIn,mFileOut;
-        CFileException ex;
-        if(!mFileIn.Open(inMfile,CFile::modeRead | CFile::typeBinary
-                         |CFile::shareDenyNone,&ex))
-        {
-            TCHAR szError[1024];
-            ex.GetErrorMessage(szError, 1024);
-            AfxMessageBox(szError);
-            return FALSE;
-        }
-
-        if(!mFileOut.Open(outMfile,File::modeWrite | CFile::modeCreate | CFile::mdeNoTruncate|
-                         CFile::typeBinary|CFile::shareDenyWrite,&ex))   2279:                mFileOut.write((char *)(outdatasizeof(complex<float>)*colM));
-        {
-            TCHAR szError[1024];
-            ex.GetErrorMessage(szError, 1024);
-            AfxMessageBox(szError);
-            mFileIn.close();
-            return FALSE;
-        }
-        */
-
 //open file in linux
         //byliuhuan 2015/4/9
         //iofstream seems do not have much option for multithread read/write file,which CFile has.
-
         ifstream mFileIn(inMfile, ios::in | ios::binary);
         if (!mFileIn.is_open()) {
             cout << "error open image mFileIn\n";
@@ -2176,7 +1913,6 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
             cout << "error open image mFileOut\n";
             return false;
         }
-
 
         complex <short> *indata;
         complex<float> *outdata;
@@ -2230,11 +1966,6 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
     }
     else if(eFLOAT32 == dtype)
     {
-        /*
-        CopyFile(inMfile,outMfile,FALSE);
-        CopyFile(inHdrfile,outHdrfile,FALSE);
-        */
-
 //CopyFile is API of copy file in Win
         //by liuhuan 2015/4/9
         char cmd[128];
@@ -2267,9 +1998,7 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
         for (register int i=0;i<p;i++)
         {
             A[halfl*p+i] *=0.5;
-            //A(halfl,i) *= .5;
             complA[halfl*p+i] *=.5;
-            //complA(halfl,i) *= .5;
         }
     }
     if (p!=1)
@@ -2291,49 +2020,23 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
 
     //CRect is a class of MFC.probably need to write one RECT class in linux
     //by liuhuan 2015/4/9
-
-    //CRect winA1;
-    //winA1.SetRect(0,0,halfp,halfl);
-
     Rect winA1(0, 0, halfp, halfl);
-    ////window winA1 = {0, halfl, 0, halfp};
     if (l==1)    
         winA1.BottomRight().y=0;        // prevent l/2-1=-1=undef.
     else if (p==1) 
         winA1.BottomRight().x = 0;   // winA1.pixhi  = 0;       // prevent p/2-1=-1=undef.
     
-    //window winA2 = {0, winA1.linehi, halfp, p-1};
-    //window winA3 = {halfl, l-1, 0, winA1.pixhi};
-    //window winA4 = {winA3.linelo, winA3.linehi, winA2.pixlo, winA2.pixhi};
-    //window winR2 = {0, winA1.linehi, halfp + padp, p+padp-1};
-    //window winR3 = {halfl+padl, l+padl-1, 0, winA1.pixhi};
-    //window winR4 = {winR3.linelo, winR3.linehi, winR2.pixlo, winR2.pixhi};
-    
-    //CRect winA2; winA2.SetRect(halfp,0,p-1,winA1.BottomRight().y);
-    //CRect winA3; winA3.SetRect(0,halfl,winA1.BottomRight().x,l-1);
-    //CRect winA4; winA4.SetRect(winA2.TopLeft().x,winA3.TopLeft().y,winA2.BottomRight().x,winA3.BottomRight().y);
-    //CRect winR2; winR2.SetRect(halfp+padp,0,p+padp-1,winA1.BottomRight().y);
-    //CRect winR3;winR3.SetRect(0,halfl+padl,winA1.BottomRight().x,l+padl-1);
-    //CRect winR4; winR4.SetRect(winR2.TopLeft().x,winR3.BottomRight().y,winR2.BottomRight().x,winR3.BottomRight().y);
-    
-    //real4 *Result;
-    //Result =new real4[(l*factor)*(p*factor)];     // initialized to 0
-
     //ZeroMemory is API of WIN
     //by liuhuan 2015/4/9
-    //ZeroMemory(Result,(l*factor*p*factor)*sizeof(float));
     memset(Result, 0, (l * factor * p * factor)*sizeof(float));
 
     float *ComplR;
     ComplR = new float[(l*factor)*(p*factor)];      // initialized to 0
-    // ZeroMemory(ComplR,(l*factor*p*factor)*sizeof(float));
     memset(ComplR, 0, (l * factor * p * factor)*sizeof(float));
 
-    //for(register int m=0;m < winA1.linehi;m++)
-    for(register int m=0;m < winA1.BottomRight().y;m++)
+    for(int m=0;m < winA1.BottomRight().y;m++)
     {
-//      for(register int n=0;n<winA1.pixhi;n++)
-        for(register int n=0;n<winA1.BottomRight().x;n++)
+        for(int n=0;n<winA1.BottomRight().x;n++)
         {
             Result[m*p*factor+n] = A[m*l+n];
             Result[m*p*factor+(p*factor-halfp+n)] = A[m*p+halfp+n];
@@ -2350,23 +2053,20 @@ void CRegistrFine::oversample(float *A, short factor,short l,short p,float *Resu
     ifft2d(Result,ComplR,l*factor,p*factor);                // Result =ifft2d
     if (l==1 || p==1)
     {
-        for(register int aa = 0;aa<l*factor*p*factor;aa++)
+        for(int aa = 0;aa<l*factor*p*factor;aa++)
             Result[aa] *= (float)factor;
     }
     else
     {
-        for(register int aa=0;aa<l*factor*p*factor;aa++)
+        for(int aa=0;aa<l*factor*p*factor;aa++)
             Result[aa]  = Result[aa]*(float)factor*(float)factor;
     }
-    //Result *= (real4(factor)*real4(factor));
     delete[] complA;
     delete[] ComplR;
 
     // ______Don't return extrapolated part______
-    //window win = {0, Result.lines()-factor, 0, Result.pixels()-factor};
-    //matrix<real4> R2(win,Result);
-    //return R2;
 } // END oversample
+
 //二维快速付里叶正变换
 int CRegistrFine::fft2d(float *xr,float *xi,int nx,int ny)
 {
@@ -2381,7 +2081,6 @@ int CRegistrFine::fft2d(float *xr,float *xi,int nx,int ny)
     double *dr,*di;
 
     //对列进行变换
-
     dr = new double[ny];
     di = new double[ny];
     for(a=0;a<nx;a++)
