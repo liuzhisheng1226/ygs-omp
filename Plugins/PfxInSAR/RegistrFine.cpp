@@ -728,10 +728,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     {
         printf("ok, eCFLOAT32 == mdatatype\n");
         short dSize = sizeof(complex<float>);
-        complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
-        complex<float>*slave= new complex<float>[boxsize3*boxsize3];    //辅图像窗口101*87
-        complex<float>*master_block=new complex<float>[boxsize1*Width]; //主图像窗口81*Width
-        complex<float>*slave_block= new complex<float>[boxsize3*Width]; //辅图像窗口87*Width
 
         //下面的代码是为了防止近距，中距，和远距在距离向的偏移像素不同而设计的；
         //在近距，中距，远距分别选三个窗口计算相关系数(设置较大的搜索范围)；分别确定
@@ -740,29 +736,33 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         //2007-02-07, 吴涛,雷达微波遥感组
 
         //初始化临时变量
-        int tempnn[9];
-        for(int i=-1;i<9;i++)
-            tempnn[i]=0;
+        int tempnn[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        omp_lock_t r_lock, w_lock;
+        omp_init_lock(&r_lock);
+        omp_init_lock(&w_lock);
 
         //在列的方向上也是考虑3个窗口
+#pragma omp parallel for
         for(int i=0;i<3;i++)
         {
+            complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
+            complex<float>*slave= new complex<float>[boxsize3*boxsize3];    //辅图像窗口101*87
+
             //初始化临时变量
-            int z1[3];          
+            int z1[3] = {0, 0, 0};
             float z_cof[3];
-            z1[0]=0;z1[1]=0;z1[2]=0;
 
             //在行的方向上考虑3个窗口
             for(int j=0;j<3;j++)
             {
-
                 //确定窗口的位置
                 int tempstep_a=numboxAzm/3; //近似3等分的位置
                 int tempstep_r=numboxRng/3; //近似3等分的位置
                 //读取主图像窗口数据
+                omp_set_lock(&r_lock);
                 file1.seekg(((centerx[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2)*Width+
-                            (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2))*
-                           dSize,
+                            (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize1/2))*dSize,
                            ios::beg);
                 for(int k=0;k<boxsize1;k++)
                 {
@@ -771,26 +771,23 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 }
                 //读取辅图像窗口数据
                 file2.seekg(((centerx[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize3/2)*Width+
-                            (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize3/2))*
-                           sizeof(complex<float>),
+                            (centery[(j*tempstep_a+2)*numboxRng+(i+1)*tempstep_r-1]-boxsize3/2))*dSize,
                            ios::beg);
                 for(int k=0;k<boxsize3;k++)
                 {
                     file2.read((char *)(slave+k*boxsize3),boxsize3*sizeof(complex<float>));
                     file2.seekg((Width-boxsize3)*sizeof(complex<float>),ios::cur);
                 }
-
+                omp_unset_lock(&r_lock);
                 //2.利用大窗口数据，计算粗配准参数
                 double temp;
                 double temp1,temp2,temp3;
-                int cc,dd;
-                //
                 double msum=0;          //纪录均值
                 double m2sum=0;         //纪录平方的均值
                 int box=boxsize1;               //匹配窗口大小为81*81
-                for(cc=-boxsize1/2;cc<=boxsize1/2;cc++)         //hang
+                for(int cc=-boxsize1/2;cc<=boxsize1/2;cc++)         //hang
                 {
-                    for(dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
+                    for(int dd=-boxsize1/2;dd<=boxsize1/2;dd++)     //lie
                     {
                         temp = abs(master[(cc+boxsize1/2)*boxsize1+dd+boxsize1/2]);
                         msum=msum+temp;
@@ -802,7 +799,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 temp2=m2sum-msum*msum;      //方差1
 
                 //求相关系数大小; 
-                int ee,ff;
                 double ssum=0;      //记录均值
                 double s2sum=0;     //记录平方的均值
                 double mssum=0;     //记录乘积的均值                    
@@ -810,17 +806,17 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 double cof=0;       //中间相关系数
 
                 int step=(boxsize3-boxsize1)/2;         //两窗口之间的偏移量
-                for(ee=-step;ee<=step;ee++)             //hang
+                for(int ee=-step;ee<=step;ee++)             //hang
                 {   
-                    for(ff=-step;ff<=step;ff++)         //lie
+                    for(int ff=-step;ff<=step;ff++)         //lie
                     {
                         ssum=0;
                         s2sum=0;
                         mssum=0;
                         //计算参数
-                        for(cc=-boxsize1/2;cc<=boxsize1/2;cc++)     //hang
+                        for(int cc=-boxsize1/2;cc<=boxsize1/2;cc++)     //hang
                         {
-                            for(dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
+                            for(int dd=-boxsize1/2;dd<=boxsize1/2;dd++) //lie
                             {
                                 temp = abs(slave[(cc+boxsize3/2+ee)*boxsize3+(dd+boxsize3/2+ff)]);
                                 ssum=ssum+temp;
@@ -864,7 +860,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             double maxtemp=z_cof[0];
             temp_y[i]=z1[0];
             //到一个最合适的距离向偏移
-            for(int j=0;j<3;j++)
+            for(int j=1;j<3;j++)
             {
                 if(z_cof[j] > maxtemp)
                 {
@@ -873,6 +869,9 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 }
             }
             if(maxtemp < 0.1) {temp_y[i]=0;}
+
+            delete[] master;
+            delete[]slave;
         } //end for i
         //考虑方位向初始偏移
         double tempnn_mean=0;
@@ -885,8 +884,8 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         }
         tempnn_mean /=9;
         tempnn_std /=9;
-
         tempnn_std -= tempnn_mean*tempnn_mean;
+
         int tempnn_count=0;
         int tempnn_val=0;
         for (int i=0;i<9;i++)
@@ -901,8 +900,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         temp_x=tempnn_val/tempnn_count;
 
         //释放空间,并重新定义变量大小
-        delete[] slave;
-        slave= new complex<float>[boxsize4*boxsize4];
+        complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
+        complex<float> *slave= new complex<float>[boxsize4*boxsize4];
+        complex<float>*master_block=new complex<float>[boxsize1*Width]; //主图像窗口81*Width
+        complex<float>*slave_block= new complex<float>[boxsize3*Width]; //辅图像窗口87*Width
         //////////////////////////////////////////////////////////////////////
 
         //在上面的基础上，进行亚象元级配准
@@ -1315,7 +1316,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 fcof[i*numboxRng+j]=maxcof;                 //每个窗的最佳匹配位置的相干fcof值
             }
         }
-        delete[] master;
+
+        omp_destroy_lock(&r_lock);
+        omp_destroy_lock(&w_lock);
+
         delete[] slave;
 
         delete[] master_block;
