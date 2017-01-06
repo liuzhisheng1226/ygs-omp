@@ -33,8 +33,6 @@ public:
             exit(1);
         }
 
-        complex<T> *data=new complex<T>[image.m_oHeader.Sample];
-
         omp_lock_t r_lock, w_lock;
         omp_init_lock(&r_lock);
         omp_init_lock(&w_lock);
@@ -42,6 +40,7 @@ public:
 #pragma omp parallel for
         for(int i=0;i<image.m_oHeader.Line;i++)
         {
+            complex<T> *data=new complex<T>[image.m_oHeader.Sample];
             float *outData=new float[image.m_oHeader.Sample];
             
             omp_set_lock(&r_lock);
@@ -62,13 +61,12 @@ public:
             fileExport.write((char *)outData, sizeof(float)*image.m_oHeader.Sample);
             omp_unset_lock(&w_lock);
 
+            delete[] data;
             delete[] outData;
         }//for i
 
         omp_destroy_lock(&r_lock);
         omp_destroy_lock(&w_lock);
-
-        delete[] data;
 
         fileImport.close();
         fileExport.close();
