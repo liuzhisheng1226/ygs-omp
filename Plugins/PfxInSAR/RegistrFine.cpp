@@ -75,9 +75,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     int boxsize2 = 93;    //1个像素的偏移窗口
     int boxsize3 = 111;   //10个像素偏移的窗口
     int boxsize4 = 103;   //6个像素偏移的窗口
-    float *mbox = new float[boxsize1*boxsize1];                       //亚像元级配准主窗口
-    complex<float> *sbox = new complex<float>[boxsize2*boxsize2];      //亚像元级配准辅窗口
-    float *bigslave = new float[boxsize2*boxsize2*8*8];   //插值到亚像元级后的窗口大小            
 
     //设置方位向和距离向窗口格网的个数
     int numboxAzm=24;       //方位向窗口个数：一般较多，因为方位尺度较小
@@ -305,6 +302,8 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         //在上面的基础上，进行亚象元级配准
         for(int i=0;i<numboxAzm;i++)
         {
+            float *mbox = new float[boxsize1*boxsize1];                       //亚像元级配准主窗口
+            complex<float> *sbox = new complex<float>[boxsize2*boxsize2];      //亚像元级配准辅窗口
             //读取一行条的数据
             //主图像窗口
             file1.seekg(((centerx[i*numboxRng]-boxsize1/2)*Width)*sizeof(complex<short>),
@@ -612,6 +611,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 temp2=m2sum-msum*msum;      //主图像匹配窗口的方差：temp2
                 ////////////////////////////////
                 //采用双线性插值法, 而不是频域滤波处理 进行扩展
+                float *bigslave = new float[boxsize2*boxsize2*8*8];   //插值到亚像元级后的窗口大小            
                 memset(bigslave,0,sizeof(float)*boxsize2*boxsize2*8*8);     //置零  
                 //
                 for(cc=0;cc<boxsize2*8;cc++)
@@ -713,7 +713,10 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     }
                 }
                 fcof[i*numboxRng+j]=maxcof;                 //每个窗的最佳匹配位置的相干fcof值
+                delete[] bigslave;
             }
+            delete[] mbox;
+            delete[] sbox;
         }
         delete[] master;
         delete[] slave;
@@ -746,8 +749,8 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
 #pragma omp parallel for
         for(int i=0;i<3;i++)
         {
-            complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
-            complex<float>*slave= new complex<float>[boxsize3*boxsize3];    //辅图像窗口101*87
+            complex<float> *master = new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
+            complex<float> *slave = new complex<float>[boxsize3*boxsize3];    //辅图像窗口101*87
 
             //初始化临时变量
             int z1[3] = {0, 0, 0};
@@ -898,29 +901,31 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         }
         //在方位向,假设有一个统一的偏移
         temp_x=tempnn_val/tempnn_count;
-
-        //释放空间,并重新定义变量大小
-        complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
-        complex<float> *slave= new complex<float>[boxsize4*boxsize4];
-        complex<float>*master_block=new complex<float>[boxsize1*Width]; //主图像窗口81*Width
-        complex<float>*slave_block= new complex<float>[boxsize3*Width]; //辅图像窗口87*Width
         //////////////////////////////////////////////////////////////////////
 
         //在上面的基础上，进行亚象元级配准
+#pragma omp parallel for
         for(int i=0;i<numboxAzm;i++)
         {
+            complex<float> *master = new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
+            complex<float> *slave = new complex<float>[boxsize4*boxsize4];
+            complex<float> *master_block = new complex<float>[boxsize1*Width]; //主图像窗口81*Width
+            complex<float> *slave_block = new complex<float>[boxsize3*Width]; //辅图像窗口87*Width
+            float *mbox = new float[boxsize1*boxsize1];                       //亚像元级配准主窗口
+            complex<float> *sbox = new complex<float>[boxsize2*boxsize2];      //亚像元级配准辅窗口
+
             //读取一行条的数据
             //主图像窗口
+            omp_set_lock(&r_lock);
             file1.seekg(((centerx[i*numboxRng]-boxsize1/2)*Width)*dSize,ios::beg);
             file1.read((char *)master_block,boxsize1*Width*dSize);          
             //辅图象窗口
             file2.seekg(((centerx[i*numboxRng]+temp_x-boxsize4/2)*Width)*dSize,ios::beg);
             file2.read((char *)slave_block,boxsize4*Width*dSize);
-
+            omp_unset_lock(&r_lock);
             //距离向德窗口
             for(int j=0;j<numboxRng;j++)
             {
-
                 //临时变量
                 double temp;
                 double temp1,temp2,temp3;
@@ -1213,6 +1218,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 temp2=m2sum-msum*msum;      //主图像匹配窗口的方差：temp2
                 ////////////////////////////////
                 //采用双线性插值法, 而不是频域滤波处理 进行扩展
+                float *bigslave = new float[boxsize2*boxsize2*8*8];   //插值到亚像元级后的窗口大小            
                 memset(bigslave,0,sizeof(float)*boxsize2*boxsize2*8*8);     //置零  
                 //
                 for(cc=0;cc<boxsize2*8;cc++)
@@ -1314,29 +1320,25 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                     }
                 }
                 fcof[i*numboxRng+j]=maxcof;                 //每个窗的最佳匹配位置的相干fcof值
-            }
-        }
-
+                delete[] bigslave;
+            } //end for j
+            delete[] master;
+            delete[] slave;
+            delete[] master_block;
+            delete[] slave_block;
+            delete[] mbox;
+            delete[] sbox;
+        } //end for i
         omp_destroy_lock(&r_lock);
         omp_destroy_lock(&w_lock);
-
-        delete[] slave;
-
-        delete[] master_block;
-        delete[] slave_block;
-
     }
 // #pragma endregion cFloat Regis
     //关闭文件
     file1.close();
     file2.close();
 
-    delete[] bigslave;
-    //
     delete[] xs;
     delete[] ys;
-    delete[] mbox;
-    delete[] sbox;
 
     //找配准系数
     double meanfcof=0;          //fcof的平均值
