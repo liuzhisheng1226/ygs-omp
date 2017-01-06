@@ -71,13 +71,13 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     }
 
     //设置匹配窗口空间
-    int boxsize1=91;    //主图像窗口大小
-    int boxsize2=93;    //1个像素的偏移窗口
-    int boxsize3=111;   //10个像素偏移的窗口
-    int boxsize4=103;   //6个像素偏移的窗口
-    float *mbox=new float[boxsize1*boxsize1];                       //亚像元级配准主窗口
-    complex<float>*sbox=new complex<float>[boxsize2*boxsize2];      //亚像元级配准辅窗口
-    float *bigslave=new float[boxsize2*boxsize2*8*8];   //插值到亚像元级后的窗口大小            
+    int boxsize1 = 91;    //主图像窗口大小
+    int boxsize2 = 93;    //1个像素的偏移窗口
+    int boxsize3 = 111;   //10个像素偏移的窗口
+    int boxsize4 = 103;   //6个像素偏移的窗口
+    float *mbox = new float[boxsize1*boxsize1];                       //亚像元级配准主窗口
+    complex<float> *sbox = new complex<float>[boxsize2*boxsize2];      //亚像元级配准辅窗口
+    float *bigslave = new float[boxsize2*boxsize2*8*8];   //插值到亚像元级后的窗口大小            
 
     //设置方位向和距离向窗口格网的个数
     int numboxAzm=24;       //方位向窗口个数：一般较多，因为方位尺度较小
@@ -86,25 +86,22 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     //窗口中心在整幅图像中的行列坐标
     unsigned int *centerx=new unsigned int[numboxAzm*numboxRng];            //行
     unsigned int *centery=new unsigned int[numboxAzm*numboxRng];            //列
-    int  i,j;
     int stepx=(Height-300*2)/numboxAzm;     //方位向窗口中心间隔，边缘空300
     int stepy=(Width-300*2)/numboxRng;      //距离向窗口中心间隔，边缘空300
 #pragma omp parallel for collapse(2)
-    for(i=0;i<numboxAzm;i++)
+    for(int i=0;i<numboxAzm;i++)
     {
-        for(j=0;j<numboxRng;j++)
+        for(int j=0;j<numboxRng;j++)
         {
             centerx[i*numboxRng+j]=300+i*stepx;     //行
             centery[i*numboxRng+j]=300+j*stepy;     //列
         }
     }
     
-
     //读取numboxAzm*numboxRng个窗口数据，获得配准参数
     //保存偏移数据的矩阵
     int *xs=new int[numboxAzm*numboxRng];   //方位向粗配准偏移
     int *ys=new int[numboxAzm*numboxRng];   //距离向粗配准偏移
-
     float* xshift=new float[numboxAzm*numboxRng];       //方位向的精配准偏移
     float* yshift=new float[numboxAzm*numboxRng];       //距离向的精配准偏移
     float* fcof=new float[numboxAzm*numboxRng];         //最佳配准位置的相干系数值
@@ -128,10 +125,8 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     {
         complex<short>*master=new complex<short>[boxsize1*boxsize1];    //主图像窗口81*81
         complex<short>*slave= new complex<short>[boxsize3*boxsize3];    //辅图像窗口101*87
-
         complex<short>*master_block=new complex<short>[boxsize1*Width]; //主图像窗口81*Width
         complex<short>*slave_block= new complex<short>[boxsize3*Width]; //辅图像窗口87*Width
-        //
 
         //下面的代码是为了防止近距，中距，和远距在距离向的偏移像素不同而设计的；
         //在近距，中距，远距分别选三个窗口计算相关系数(设置较大的搜索范围)；分别确定
@@ -141,11 +136,11 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
 
         //初始化临时变量
         int tempnn[9];
-        for( i=0;i<9;i++)
+        for(int i=0;i<9;i++)
             tempnn[i]=0;
 
         //在列的方向上也是考虑3个窗口
-        for(i=0;i<3;i++)
+        for(int i=0;i<3;i++)
         {
             //初始化临时变量
             int z1[3];          
@@ -155,7 +150,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             z1[2]=0;
 
             //在行的方向上考虑3个窗口
-            for(j=0;j<3;j++)
+            for(int j=0;j<3;j++)
             {
                 //确定窗口的位置
                 int tempstep_a=numboxAzm/3; //近似3等分的位置
@@ -265,7 +260,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             temp_y[i]=z1[0];
 
             //到一个最合适的距离向偏移
-            for(j=0;j<3;j++)
+            for(int j=0;j<3;j++)
             {
                 if(z_cof[j] > maxtemp)
                 {
@@ -280,7 +275,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         double tempnn_mean=0;
         double tempnn_std=0;
         //通过均值和标准差控制误差
-        for(i=0;i<9;i++)
+        for(int i=0;i<9;i++)
         {
             tempnn_mean += tempnn[i];
             tempnn_std  += tempnn[i]*tempnn[i];
@@ -291,7 +286,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         tempnn_std -= tempnn_mean*tempnn_mean;
         int tempnn_count=0;
         int tempnn_val=0;
-        for (i=0;i<9;i++)
+        for (int i=0;i<9;i++)
         {
             if(tempnn[i] >= tempnn_mean-2*tempnn_std && tempnn[i] <= tempnn_mean + 2*tempnn_std)
             {
@@ -308,7 +303,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         //////////////////////////////////////////////////////////////////////
 
         //在上面的基础上，进行亚象元级配准
-        for(i=0;i<numboxAzm;i++)
+        for(int i=0;i<numboxAzm;i++)
         {
             //读取一行条的数据
             //主图像窗口
@@ -321,7 +316,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             file2.read((char *)(slave_block),boxsize4*Width*sizeof(complex<short>));
 
             //距离向德窗口
-            for(j=0;j<numboxRng;j++)
+            for(int j=0;j<numboxRng;j++)
             {
                 //临时变量
                 double temp;
@@ -735,10 +730,8 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         short dSize = sizeof(complex<float>);
         complex<float>*master=new complex<float>[boxsize1*boxsize1];    //主图像窗口81*81
         complex<float>*slave= new complex<float>[boxsize3*boxsize3];    //辅图像窗口101*87
-
         complex<float>*master_block=new complex<float>[boxsize1*Width]; //主图像窗口81*Width
         complex<float>*slave_block= new complex<float>[boxsize3*Width]; //辅图像窗口87*Width
-        //
 
         //下面的代码是为了防止近距，中距，和远距在距离向的偏移像素不同而设计的；
         //在近距，中距，远距分别选三个窗口计算相关系数(设置较大的搜索范围)；分别确定
@@ -748,11 +741,11 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
 
         //初始化临时变量
         int tempnn[9];
-        for( i=0;i<9;i++)
+        for(int i=-1;i<9;i++)
             tempnn[i]=0;
 
         //在列的方向上也是考虑3个窗口
-        for(i=0;i<3;i++)
+        for(int i=0;i<3;i++)
         {
             //初始化临时变量
             int z1[3];          
@@ -760,7 +753,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             z1[0]=0;z1[1]=0;z1[2]=0;
 
             //在行的方向上考虑3个窗口
-            for(j=0;j<3;j++)
+            for(int j=0;j<3;j++)
             {
 
                 //确定窗口的位置
@@ -866,28 +859,26 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
                 }
                 //保存最大配准位置
                 z_cof[j]=maxcof;
-            }//end j
+            }//end for j
+            
             double maxtemp=z_cof[0];
             temp_y[i]=z1[0];
-
             //到一个最合适的距离向偏移
-            for(j=0;j<3;j++)
+            for(int j=0;j<3;j++)
             {
                 if(z_cof[j] > maxtemp)
                 {
                     maxtemp=z_cof[j];
                     temp_y[i]=z1[j];
-                    //temp_x=tempnn[j];
                 }
             }
-            if(maxtemp < 0.1) {temp_y[i]=0;}//temp_x=0;}
-            
-        }
+            if(maxtemp < 0.1) {temp_y[i]=0;}
+        } //end for i
         //考虑方位向初始偏移
         double tempnn_mean=0;
         double tempnn_std=0;
         //通过均值和标准差控制误差
-        for(i=0;i<9;i++)
+        for(int i=0;i<9;i++)
         {
             tempnn_mean += tempnn[i];
             tempnn_std  += tempnn[i]*tempnn[i];
@@ -898,7 +889,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         tempnn_std -= tempnn_mean*tempnn_mean;
         int tempnn_count=0;
         int tempnn_val=0;
-        for (i=0;i<9;i++)
+        for (int i=0;i<9;i++)
         {
             if(tempnn[i] >= tempnn_mean-2*tempnn_std && tempnn[i] <= tempnn_mean + 2*tempnn_std)
             {
@@ -915,7 +906,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
         //////////////////////////////////////////////////////////////////////
 
         //在上面的基础上，进行亚象元级配准
-        for(i=0;i<numboxAzm;i++)
+        for(int i=0;i<numboxAzm;i++)
         {
             //读取一行条的数据
             //主图像窗口
@@ -926,7 +917,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
             file2.read((char *)slave_block,boxsize4*Width*dSize);
 
             //距离向德窗口
-            for(j=0;j<numboxRng;j++)
+            for(int j=0;j<numboxRng;j++)
             {
 
                 //临时变量
@@ -1347,29 +1338,27 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     double meanfcof=0;          //fcof的平均值
     double stdvarfcof=0.0;      //fcof的标准差
     int tempn=0;
-    for(i=0;i<numboxAzm;i++)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
-        for(j=0;j<numboxRng;j++)
+        if(fcof[i] <1 && fcof[i] > 1e-6)    //大于0，小于1 
         {
-            if(fcof[i*numboxRng+j] <1 && fcof[i*numboxRng+j] > 1e-6)    //大于0，小于1 
-            {
-                meanfcof   += fcof[i*numboxRng+j];
-                stdvarfcof += fcof[i*numboxRng+j]*fcof[i*numboxRng+j];
-                tempn++;
-            }
+            meanfcof += fcof[i];
+            stdvarfcof += fcof[i]*fcof[i];
+            tempn++;
         }
     }
-    meanfcof=meanfcof/tempn;
+    meanfcof = meanfcof/tempn;
 
-    stdvarfcof=stdvarfcof/tempn;
-    stdvarfcof -=meanfcof*meanfcof; //方差
+    stdvarfcof = stdvarfcof/tempn;
+    stdvarfcof -= meanfcof*meanfcof; //方差
     stdvarfcof = sqrt(stdvarfcof);  //标准差
 
     int num=0;                          //大于(均值+标准差) 的个数
-    for(i=0;i<numboxAzm*numboxRng;i++)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
-        if(meanfcof+stdvarfcof<fcof[i] && fcof[i] <1 )//
-            num=num+1;
+        if(meanfcof+stdvarfcof<fcof[i] && fcof[i] <1 ) {
+            num++;
+        }
     }
 
     float *basePosX,*basePosY,*slavePosX,*slavePosY;    //X：列方向，Y：行方向
@@ -1381,24 +1370,18 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     float *tempCof = new float[num];
     int pointI=0;
     double azimuth=0;
-    for(int i=0;i<numboxAzm;i++)
+    for(int i=0;i<numboxAzm*numboxRng;i++)
     {
-        for(int j=0;j<numboxRng;j++)
+        if(fcof[i]>meanfcof+stdvarfcof && fcof[i] <1)//
         {
-            if(fcof[i*numboxRng+j]>meanfcof+stdvarfcof && fcof[i*numboxRng+j] <1  )//
-            {
-                slavePosX[pointI] = centery[i*numboxRng+j]+yshift[i*numboxRng+j];       ////X: lie,Y:hang; x;hang y lie
-                slavePosY[pointI] = centerx[i*numboxRng+j]+xshift[i*numboxRng+j];   //
-
-                basePosX[pointI]= centery[i*numboxRng+j]; 
-                basePosY[pointI]= centerx[i*numboxRng+j]; 
-
-                tempCof[pointI] = fcof[i*numboxRng+j];
-
-                azimuth=azimuth+xshift[i*numboxRng+j];      //准备计算平均方位偏移
-                pointI++;
-            }
-        }       
+            slavePosX[pointI] = centery[i]+yshift[i];       ////X: lie,Y:hang; x;hang y lie
+            slavePosY[pointI] = centerx[i]+xshift[i];
+            basePosX[pointI]= centery[i]; 
+            basePosY[pointI]= centerx[i]; 
+            tempCof[pointI] = fcof[i];
+            azimuth=azimuth+xshift[i];      //准备计算平均方位偏移
+            pointI++;
+        }
     }
 
     azimuth=azimuth/num;            //平均方位偏移
@@ -1418,9 +1401,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     delete[]yshift;
     delete[]fcof;
     delete[] centerx;
-    delete[] centery;//
-
-
+    delete[] centery;
 
     cout << "enter Resample\n";
     Resample(lpDataIn1,lpHdrIn1,lpDataIn2,lpHdrIn2,
@@ -1430,8 +1411,6 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     cout << "enter ReSampleImg_Master\n";
     ReSampleImg_Master(lpDataIn1,lpHdrIn1,lpDataOutM,lpHdrOutM,Width,Height,mImg.m_oHeader.DataType);
     cout << "exit ReSampleImg_Master\n";
-
-
 
     return;
 }//void Fine
