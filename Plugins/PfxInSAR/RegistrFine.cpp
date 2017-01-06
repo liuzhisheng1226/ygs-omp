@@ -51,23 +51,20 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     CRMGImage mImg(lpDataIn1,lpHdrIn1);
     CRMGImage sImg(lpDataIn2,lpHdrIn2);
     printf("image construct complete!\n");
-    int Width;          //主辅图像大小
-    int Height;
     float shift_azm = sImg.m_oHeader.Registration.azimuthOffst; //粗配准方位向偏移
-    int mdatatype;      //主图像数据类型: 5, 6;
 
     //获取数据属性信息
-    Width = mImg.m_oHeader.Sample;
-    Height= mImg.m_oHeader.Line;
-    mdatatype= mImg.m_oHeader.DataType;
+    int Width = mImg.m_oHeader.Sample;
+    int Height = mImg.m_oHeader.Line;
+    int mdatatype = mImg.m_oHeader.DataType; //主图像数据类型: 5, 6;
 
     //打开主辅图像
-    ifstream file1(lpDataIn1, ios::in);
+    ifstream file1(lpDataIn1, ios::in | ios::binary);
     if (!file1.is_open()) {
         cout << "error open image 1\n";
         exit(1) ;
     }
-    ifstream file2(lpDataIn2, ios::in);
+    ifstream file2(lpDataIn2, ios::in | ios::binary);
     if (!file2.is_open()) {
         cout << "error open image 2\n";
         exit(1);
@@ -92,6 +89,7 @@ void CRegistrFine::Fine(string lpDataIn1,string lpHdrIn1,
     int  i,j;
     int stepx=(Height-300*2)/numboxAzm;     //方位向窗口中心间隔，边缘空300
     int stepy=(Width-300*2)/numboxRng;      //距离向窗口中心间隔，边缘空300
+#pragma omp parallel for collapse(2)
     for(i=0;i<numboxAzm;i++)
     {
         for(j=0;j<numboxRng;j++)
@@ -1499,57 +1497,59 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
         exit(1);
     }
     printf("ReSampling...\n");
-    int i,j;
-    //
-    double dx,dy;
-    long t1,t2,t3,t4;
-    float alpha,belta;
+    //int i,j;
+    //double dx,dy;
+    //long t1,t2,t3,t4;
+    //float alpha,belta;
 
     int delth   =   200;                    //
     int temp_H  =   600+2*delth;            //
-
     int temp_N  =   Height/600;         //
-
     int NewH=600;
-    int bnum=0;
+    //int bnum=0;
+    omp_lock_t r_lock, w_lock;
+    omp_init_lock(&r_lock);
+    omp_init_lock(&w_lock);
 
 // #pragma region Resample cShort
     if(datatype==eCINT16)           //
     {       
-        complex<short>*bslave   =   new complex<short>[Width*temp_H];
-        complex<float>*slave1=new complex<float>[Width*NewH];
-
-        for(bnum=0;bnum<temp_N;bnum++)  //
+        short dSize = sizeof(complex<short>);
+        streampos pos1 = dSize*Width*(temp_H-delth);
+#pragma omp parallel for
+        for(int bnum=0;bnum<temp_N;bnum++)  //
         {
             if(bnum < temp_N-1)         //
             {
+                complex<short>*bslave = new complex<short>[Width*temp_H];
+                complex<float>*slave1=new complex<float>[Width*NewH];
                 int shift_w=0;          
+                omp_set_lock(&r_lock);
                 if(bnum==0)             
                 {
-                    file1.read((char *)bslave,sizeof(complex<short>)*Width*(temp_H-delth));
-                    
+                    file1.seekg(0, ios::beg);
+                    file1.read((char *)bslave,dSize*Width*(temp_H-delth));
                     shift_w=bnum*600;   
                 }
                 else                    
                 {                       
-                    file1.seekg(-2*delth*Width*sizeof(complex<short>),ios::cur);
-                    file1.read((char *)bslave,sizeof(complex<short>)*Width*temp_H);
-
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize*bnum + (streampos)dSize*Width*temp_H*(bnum-1),ios::beg);
+                    file1.read((char *)bslave,dSize*Width*temp_H);
                     shift_w=bnum*600-delth;
                 }
-                //
-                for(i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
+                omp_unset_lock(&r_lock);
+                for(int i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
                 {
                     int ii=i-bnum*600;
 
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
 
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    //
-                        belta=dy-t2;    
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    //
+                        float belta=dy-t2;    
                                                 
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 && t1<Height-1))
@@ -1599,7 +1599,12 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                         }
                     }
                 }
-                file2.write((char *)(slave1), sizeof(complex<float>)*Width * NewH);
+                omp_set_lock(&w_lock);
+                file2.seekp((streampos)dSize*Width*NewH*bnum, ios::beg);
+                file2.write((char *)(slave1), dSize*Width * NewH);
+                omp_unset_lock(&w_lock);
+                delete[] bslave;
+                delete[] slave1;
             }
             else
             {
@@ -1607,30 +1612,31 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 int last_H=Height-bnum*NewH+delth;  
                 complex<short>*bslave_2=new complex<short>[last_H*Width];
                 complex<float>*slave_2=new complex<float>[(last_H-delth)*Width];    
+                omp_set_lock(&r_lock);
                 if(bnum==0) 
                 {
                     shift_w=0;
+                    file1.seekg(0, ios::beg);
                     file1.read((char *)bslave_2,sizeof(complex<short>)*(Height-bnum*NewH)*Width);
                 }   
                 else    
                 {
                     shift_w=bnum*600-delth;
-
-                    file1.seekg(-2*delth*Width*sizeof(complex<short>),ios::cur);
-                    file1.read((char *)bslave_2,sizeof(complex<short>)*last_H*Width);       
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize*bnum + (streampos)dSize*Width*temp_H*(bnum-1), ios::beg);
+                    file1.read((char *)bslave_2,dSize*last_H*Width);       
                 }
-
-                for(i=bnum*600; i< Height ;i++)
+                omp_unset_lock(&r_lock);
+                for(int i=bnum*600; i< Height ;i++)
                 {
                     int ii=i-bnum*600;
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
                         
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    
-                        belta=dy-t2;                        
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    
+                        float belta=dy-t2;                        
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 &&t1<Height-1))
                         {
@@ -1678,56 +1684,55 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                         }
                     }
                 }
+                omp_set_lock(&w_lock);
+                file2.seekp((streampos)dSize*Width*NewH*bnum, ios::beg);
                 file2.write((char *)slave_2,sizeof(complex<float>)*Width*(Height-bnum*NewH));
-                //
+                omp_unset_lock(&w_lock);
                 delete[] slave_2;
                 delete[] bslave_2;
             }
         }
-        //
-        delete[] bslave;
-        delete[] slave1;
-        //
     }
 // #pragma endregion Resample cShort
-
 // #pragma region Resample cFloat
     else if(eCFLOAT32 == datatype )
     {
         short dSize = sizeof(complex<float>);
-        complex<float>*bslave   =   new complex<float>[Width*temp_H];   ;
-        complex<float>*slave1=new complex<float>[Width*NewH];   
-
-        for(bnum=0;bnum<temp_N;bnum++)  //
+        streampos pos1 = dSize*Width*(temp_H-delth);
+#pragma omp parallel for
+        for(int bnum=0;bnum<temp_N;bnum++)  //
         {
             if(bnum < temp_N-1)         //
             {
+                complex<float>*bslave = new complex<float>[Width*temp_H];
+                complex<float>*slave1=new complex<float>[Width*NewH];   
                 int shift_w=0;          
+                omp_set_lock(&r_lock);
                 if(bnum==0)             
                 {
+                    file1.seekg(0, ios::beg);
                     file1.read((char *)bslave,dSize*Width*(temp_H-delth));
                     shift_w=bnum*600;   
                 }
                 else                    
                 {                       
-                    file1.seekg(-2*delth*Width*dSize,ios::cur);
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize*bnum + (streampos)dSize*Width*temp_H*(bnum-1),ios::beg);
                     file1.read((char *)bslave,dSize*Width*temp_H);
-
                     shift_w=bnum*600-delth;
                 }
-                //
-                for(i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
+                omp_unset_lock(&r_lock);
+                for(int i=bnum*600;i<(bnum+1)*600 && i< Height ;i++)                    
                 {
                     int ii=i-bnum*600;
 
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
 
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    //
-                        belta=dy-t2;    
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    //
+                        float belta=dy-t2;    
                                                 
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 && t1<Height-1))
@@ -1777,7 +1782,12 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                         }
                     }
                 }
+                omp_set_lock(&w_lock);
+                file2.seekp((streampos)dSize*Width*NewH*bnum, ios::beg);
                 file2.write((char *)slave1,dSize*Width*NewH);
+                omp_unset_lock(&w_lock);
+                delete[] bslave;
+                delete[] slave1;
             }
             else //bnum == tempN-1
             {
@@ -1785,30 +1795,31 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                 int last_H=Height-bnum*NewH+delth;  
                 complex<float>*bslave_2=new complex<float>[last_H*Width];
                 complex<float>*slave_2=new complex<float>[(last_H-delth)*Width];    
+                omp_set_lock(&r_lock);
                 if(bnum==0) 
                 {
                     shift_w=0;
+                    file1.seekg(0, ios::beg);
                     file1.read((char *)bslave_2,dSize*(Height-bnum*NewH)*Width);
                 }   
                 else    
                 {
                     shift_w=bnum*600-delth;
-
-                    file1.seekg(-2*delth*Width*dSize,ios::cur);
+                    file1.seekg(pos1 - (streampos)2*delth*Width*dSize*bnum + (streampos)dSize*Width*temp_H*(bnum-1), ios::beg);
                     file1.read((char *)bslave_2,dSize*last_H*Width);        
                 }
-
-                for(i=bnum*600; i< Height ;i++)
+                omp_unset_lock(&r_lock);
+                for(int i=bnum*600; i< Height ;i++)
                 {
                     int ii=i-bnum*600;
-                    for(j=0;j<Width;j++)
+                    for(int j=0;j<Width;j++)
                     {
-                        dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
-                        dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
+                        double dx = yMtxCoef[0]+ yMtxCoef[1]*j+yMtxCoef[2]*i+yMtxCoef[3]*j*j+yMtxCoef[4]*i*j+yMtxCoef[5]*i*i; 
+                        double dy = xMtxCoef[0]+ xMtxCoef[1]*j+xMtxCoef[2]*i+xMtxCoef[3]*j*j+xMtxCoef[4]*i*j+xMtxCoef[5]*i*i;
                         
-                        t1=floor(dx);t2=floor(dy);t3=t1+1;t4=t2+1;  
-                        alpha=dx-t1;    
-                        belta=dy-t2;                        
+                        long t1=floor(dx);long t2=floor(dy);long t3=t1+1;long t4=t2+1;  
+                        float alpha=dx-t1;    
+                        float belta=dy-t2;                        
                         if((t1==0 && t2>=0 && t2<Width-1)||(t2==0 && t1>=0 && t1<Height-1)
                            ||(t1==Height-2 && t2>=0 && t2<Width-1)||(t2==Width-2 && t1>=0 &&t1<Height-1))
                         {
@@ -1856,17 +1867,19 @@ void CRegistrFine::Resample(string lpDataIn1,string lpHdrIn1,
                         }
                     }
                 }
-                file2.write((char *)slave_2,sizeof(complex<float>)*Width*(Height-bnum*NewH));
-                //
+                omp_set_lock(&w_lock);
+                file2.seekp((streampos)dSize*Width*NewH*bnum, ios::beg);
+                file2.write((char *)slave_2,dSize*Width*(Height-bnum*NewH));
+                omp_unset_lock(&w_lock);
                 delete[] slave_2;
                 delete[] bslave_2;
             }
         }
-        //
-        delete[] bslave;
-        delete[] slave1;
     }
 // #pragma endregion Resample cFloat
+
+    omp_destroy_lock(&r_lock);
+    omp_destroy_lock(&w_lock);
     file1.close();
     file2.close();
     /***************end Test*********************/
@@ -1914,12 +1927,11 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
             return false;
         }
 
-        complex <short> *indata;
-        complex<float> *outdata;
         int dsize = sizeof(complex<short>);
         int iBlock,eachRow;
         int lastRow;
-        if(rowM < 3000)
+        //if(rowM < 3000)
+        if(rowM < 300)
         {
             iBlock =1;
             eachRow = rowM;
@@ -1927,26 +1939,43 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
         }
         else
         {
-            eachRow = 2000;
+            //eachRow = 2000;
+            eachRow = 200;
             iBlock = rowM/eachRow;
             lastRow = rowM - iBlock*eachRow;
         }
-        outdata = new complex<float>[colM];
+
+        omp_lock_t r_lock, w_lock;
+        omp_init_lock(&r_lock);
+        omp_init_lock(&w_lock);
+
+#pragma omp parallel for
         for(int b=0;b<iBlock;b++)
         {
-            indata = new complex<short>[eachRow*colM];
+            complex<short> *indata = new complex<short>[eachRow*colM];
+            complex<float> *outdata = new complex<float>[eachRow*colM];
+            omp_set_lock(&r_lock);
+            mFileIn.seekg((streampos)b*dsize*eachRow*colM, ios::beg);
             mFileIn.read((char *)indata,dsize*eachRow*colM);
-            for(int m=0;m<eachRow;m++)
+            omp_unset_lock(&r_lock);
+            for(int m=0;m<eachRow*colM;m++)
             {               
-                for(int n=0;n<colM;n++)
-                    outdata[n] = complex<float>(indata[m*colM+n].real(),indata[m*colM+n].imag());
-                mFileOut.write((char *)outdata,sizeof(complex<float>)*colM);
+                outdata[m] = complex<float>(indata[m].real(),indata[m].imag());
             }
+            omp_set_lock(&w_lock);
+            mFileOut.seekp((streampos)b*sizeof(complex<float>)*eachRow*colM, ios::beg);
+            mFileOut.write((char *)outdata,sizeof(complex<float>)*eachRow*colM);
+            omp_unset_lock(&w_lock);
             delete[] indata;
+            delete[] outdata;
         }
-        if(0!= lastRow)
+        omp_destroy_lock(&r_lock);
+        omp_destroy_lock(&w_lock);
+
+        if(0 != lastRow)
         {
-            indata = new complex<short>[lastRow*colM];
+            complex<short> *indata = new complex<short>[lastRow*colM];
+            complex<float> *outdata = new complex<float>[colM];
             mFileIn.read((char *)indata,dsize*lastRow*colM);
             for(int i=0;i<lastRow;i++)
             {               
@@ -1955,10 +1984,11 @@ bool CRegistrFine::ReSampleImg_Master(string inMfile,string inHdrfile,string out
                mFileOut.write((char *)outdata,sizeof(complex<float>)*colM);
             }
             delete[] indata;
-            mFileIn.close();
-            mFileOut.close();
             delete[] outdata;
         }
+        mFileIn.close();
+        mFileOut.close();
+
         CRMGImage mImg(inMfile,inHdrfile);
         CRMGHeader header(mImg.m_oHeader);
         header.DataType = eCFLOAT32;
