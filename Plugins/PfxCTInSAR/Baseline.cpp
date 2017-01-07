@@ -194,6 +194,10 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             }
         }
 
+        omp_lock_t f_lock;
+        omp_init_lock(&f_lock);
+
+#pragma omp parallel for
         for (int m = 0; m < h; ++m)
         {
             double interp_slt[5];       //插值点处的斜距
@@ -290,9 +294,14 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
                 out_inc[j]=out_inc[j]/(AziLooks*RanLooks);
                 out_slt[j]=out_slt[j]/(AziLooks*RanLooks);
             }
+            omp_set_lock(&f_lock);
+            file1.seekp((streampos)m*sizeof(double)*w, ios::beg);
             file1.write((char *)out_slt, sizeof(double)*w);
+            file2.seekp((streampos)m*sizeof(float)*w, ios::beg);
             file2.write((char *)out_inc, sizeof(float)*w);
+            file3.seekp((streampos)m*sizeof(float)*w, ios::beg);
             file3.write((char *)out_bas, sizeof(float)*w);
+            omp_unset_lock(&f_lock);
 
             delete[] slt_temp;
             delete[] inc_temp;
@@ -301,13 +310,20 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             delete[] out_inc;
             delete[] out_bas;
         }
-
+        omp_destroy_lock(&f_lock);
         //关闭文件
         file1.close();
         file2.close();
         file3.close();
 
         delete[] position;
+        delete[] R1s;
+        delete[] x00s;
+        delete[] y00s;
+        delete[] z00s;
+        delete[] x0s;
+        delete[] y0s;
+        delete[] z0s;
 
         //输出头文件
         CRMGHeader header(mImg.m_oHeader);                      //复制主图像头文件信息
