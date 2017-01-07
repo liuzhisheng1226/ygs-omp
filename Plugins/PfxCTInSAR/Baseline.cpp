@@ -133,10 +133,6 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         double e=2*f-f*f;           //偏心率
         //double c;
 
-        //利用中心经纬度计算地面三维坐标  x0,y0,z0 为地面坐标
-        double x0=0,y0=0,z0=0;    
-        mImg.LonLat2Coordinate(x0,y0,z0);
-
         //打开文件
         ofstream file1 (SlateOut, ios::out);
         if (!file1.is_open()) {
@@ -157,133 +153,128 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         long box_Width=lWidth;
         int step=box_Width/(5-1);   //每个点之间的近似间隔
         double interp_position[5]={0,(double)step,2*(double)step,3*(double)step,(double)box_Width-1};   //插值点位置
-        double interp_slt[5];       //插值点处的斜距
-        double interp_inc[5];       //插值点处的入射角
-        double interp_base[5];      //插值点处的基线据
-
-        //分配缓存
-        double *slt_temp=new double[box_Width];
-        double *inc_temp=new double[box_Width];
-        double *base_temp=new double[box_Width];
         double *position=new double [box_Width];
         for(int ii=0;ii<box_Width;ii++) position[ii]=ii;
         //多视处理的大小
         int w=lWidth/RanLooks;
         int h=lHeight/AziLooks;
 
-        //为输出数据分配空间
-        float *out_bas=new float[w];
-        float *out_inc=new float[w];
-        double *out_slt=new double[w];
-        memset(out_bas,0,sizeof(float)*w);
-        memset(out_inc,0,sizeof(float)*w);
-        memset(out_slt,0,sizeof(double)*w);
+        //利用中心经纬度计算地面三维坐标  x0,y0,z0 为地面坐标
+        double x0=0,y0=0,z0=0;    
+        mImg.LonLat2Coordinate(x0,y0,z0);
 
-        int numrow=0;
-        int numclm=0;
-        //主辅卫星的三维坐标
-        //double satXm,satYm,satZm,satXs,satYs,satZs;
-        //按行处理 
-        for(long row=0;row<h*AziLooks;row++)
+        for (int m = 0; m < h; ++m)
         {
-            numclm++;
-            //计算子区的第一点对应的轨道坐标，并计算对应的三维坐标      
-            double t0 = isAscend?(azimuth_t1_m+(lFirstRow+row)/prf-sensor_t0_m):(azimuth_tn_m+(originLine-lFirstRow-row)/prf-sensor_t0_m);     //成像时间
-            double t_poi=t0;
+            double interp_slt[5];       //插值点处的斜距
+            double interp_inc[5];       //插值点处的入射角
+            double interp_base[5];      //插值点处的基线据
 
-            //轨道坐标
-            double satXm=mImg.Polyfit(xPolyCoef,t0,0);
-            double satYm=mImg.Polyfit(yPolyCoef,t0,0);
-            double satZm=mImg.Polyfit(zPolyCoef,t0,0);
+            //分配缓存
+            double *slt_temp=new double[box_Width];
+            double *inc_temp=new double[box_Width];
+            double *base_temp=new double[box_Width];
 
-            //地面坐标
-            mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
+            //为输出数据分配空间
+            float *out_bas=new float[w];
+            float *out_inc=new float[w];
+            double *out_slt=new double[w];
+            memset(out_bas,0,sizeof(float)*w);
+            memset(out_inc,0,sizeof(float)*w);
+            memset(out_slt,0,sizeof(double)*w);
 
-            //辅图像
-            t0 = sImg.getSatposT(x0,y0,z0,xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
-            double satXs = sImg.Polyfit(xPolyCoef1,t0,0);
-            double satYs = sImg.Polyfit(yPolyCoef1,t0,0);
-            double satZs = sImg.Polyfit(zPolyCoef1,t0,0);
+            for (int n = 0; n < AziLooks; ++n)
+            {
+                long row = m*AziLooks+n;
+                //计算子区的第一点对应的轨道坐标，并计算对应的三维坐标      
+                double t0 = isAscend?(azimuth_t1_m+(lFirstRow+row)/prf-sensor_t0_m):(azimuth_tn_m+(originLine-lFirstRow-row)/prf-sensor_t0_m);     //成像时间
+                double t_poi=t0;
+                //轨道坐标
+                double satXm=mImg.Polyfit(xPolyCoef,t0,0);
+                double satYm=mImg.Polyfit(yPolyCoef,t0,0);
+                double satZm=mImg.Polyfit(zPolyCoef,t0,0);
 
-            //基线距
-            double baseline=sqrt((satXm-satXs)*(satXm-satXs)+
+                //地面坐标
+                mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
+
+                //辅图像
+                t0 = sImg.getSatposT(x0,y0,z0,xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
+                double satXs = sImg.Polyfit(xPolyCoef1,t0,0);
+                double satYs = sImg.Polyfit(yPolyCoef1,t0,0);
+                double satZs = sImg.Polyfit(zPolyCoef1,t0,0);
+
+                //基线距
+                double baseline=sqrt((satXm-satXs)*(satXm-satXs)+
                                  (satYm-satYs)*(satYm-satYs)+
                                  (satZm-satZs)*(satZm-satZs));
 
-            //定义变量 
-            double R1;     //主图像斜距
-            double R2;     //辅图像斜距
-            double Rs;
-            double Rp;
-            double angle;   //三角形中，垂直基线对应的锐角
-            double Baseline_norm;           //垂直基线距
-            //先计算5个采样点数据
-            for(int ii=0;ii<5;ii++)
-            {
-                R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
-                mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1,x0,y0,z0,10);
-                R2=sqrt((satXs-x0)*(satXs-x0)+(satYs-y0)*(satYs-y0)+(satZs-z0)*(satZs-z0));
-
-                Rs=sqrt(satXm*satXm+satYm*satYm+satZm*satZm);
-                Rp=sqrt(x0*x0+y0*y0+z0*z0);
-
-                interp_slt[ii]=R1;
-                interp_inc[ii]=acos((R1*R1+Rs*Rs-Rp*Rp)/(2*R1*Rs));
-
-                angle=acos((R1*R1+baseline*baseline-R2*R2)/(2*R1*baseline));    //计算角度          
-                if(flag==true)
-                    Baseline_norm = baseline * sin(angle);
-                else 
-                    Baseline_norm = -baseline * sin(angle);
-
-                //垂直基线距
-                interp_base[ii]=Baseline_norm;
-            }
-
-            //差值到一行数据上
-            pwcint(interp_position,interp_slt,5,position,slt_temp,box_Width);
-            pwcint(interp_position,interp_inc,5,position,inc_temp,box_Width);
-            pwcint(interp_position,interp_base,5,position,base_temp,box_Width);
-
-            //多视处理的结果
-            for(int j=0;j<w*RanLooks;j++)
-            {
-                out_bas[j/RanLooks] += base_temp[j];
-                out_inc[j/RanLooks] += inc_temp[j];
-                out_slt[j/RanLooks] += slt_temp[j];
-            }
-            //方位多视处理，并输出
-            if(numclm==AziLooks)
-            {
-                for(int j=0;j<w;j++)
+                //定义变量 
+                double R1;     //主图像斜距
+                double R2;     //辅图像斜距
+                double Rs;
+                double Rp;
+                double angle;   //三角形中，垂直基线对应的锐角
+                double Baseline_norm;           //垂直基线距
+                //先计算5个采样点数据
+                for(int ii=0;ii<5;ii++)
                 {
-                    out_bas[j]=out_bas[j]/(AziLooks*RanLooks);
-                    out_inc[j]=out_inc[j]/(AziLooks*RanLooks);
-                    out_slt[j]=out_slt[j]/(AziLooks*RanLooks);
-                }
-                file1.write((char *)out_slt, sizeof(double)*w);
-                file2.write((char *)out_inc, sizeof(float)*w);
-                file3.write((char *)out_bas, sizeof(float)*w);
+                    R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
+                    mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1,x0,y0,z0,10);
+                    R2=sqrt((satXs-x0)*(satXs-x0)+(satYs-y0)*(satYs-y0)+(satZs-z0)*(satZs-z0));
 
-                memset(out_slt,0,sizeof(double)*w);
-                memset(out_inc,0,sizeof(float)*w);
-                memset(out_bas,0,sizeof(float)*w);
-                numclm=0;
+                    Rs=sqrt(satXm*satXm+satYm*satYm+satZm*satZm);
+                    Rp=sqrt(x0*x0+y0*y0+z0*z0);
+    
+                    interp_slt[ii]=R1;
+                    interp_inc[ii]=acos((R1*R1+Rs*Rs-Rp*Rp)/(2*R1*Rs));
+
+                    angle=acos((R1*R1+baseline*baseline-R2*R2)/(2*R1*baseline));    //计算角度          
+                    if(flag==true)
+                        Baseline_norm = baseline * sin(angle);
+                    else 
+                        Baseline_norm = -baseline * sin(angle);
+
+                    //垂直基线距
+                    interp_base[ii]=Baseline_norm;
+                }
+
+                //差值到一行数据上
+                pwcint(interp_position,interp_slt,5,position,slt_temp,box_Width);
+                pwcint(interp_position,interp_inc,5,position,inc_temp,box_Width);
+                pwcint(interp_position,interp_base,5,position,base_temp,box_Width);
+
+                //多视处理的结果
+                for(int j=0;j<w*RanLooks;j++)
+                {
+                    out_bas[j/RanLooks] += base_temp[j];
+                    out_inc[j/RanLooks] += inc_temp[j];
+                    out_slt[j/RanLooks] += slt_temp[j];
+                }
             }
-        }  // end for 按行处理
+
+            for(int j=0;j<w;j++)
+            {
+                out_bas[j]=out_bas[j]/(AziLooks*RanLooks);
+                out_inc[j]=out_inc[j]/(AziLooks*RanLooks);
+                out_slt[j]=out_slt[j]/(AziLooks*RanLooks);
+            }
+            file1.write((char *)out_slt, sizeof(double)*w);
+            file2.write((char *)out_inc, sizeof(float)*w);
+            file3.write((char *)out_bas, sizeof(float)*w);
+
+            delete[] slt_temp;
+            delete[] inc_temp;
+            delete[] base_temp;
+            delete[] out_slt;
+            delete[] out_inc;
+            delete[] out_bas;
+        }
 
         //关闭文件
         file1.close();
         file2.close();
         file3.close();
 
-        delete[] slt_temp;
-        delete[] inc_temp;
-        delete[] base_temp;
         delete[] position;
-        delete[] out_slt;
-        delete[] out_inc;
-        delete[] out_bas;
 
         //输出头文件
         CRMGHeader header(mImg.m_oHeader);                      //复制主图像头文件信息
