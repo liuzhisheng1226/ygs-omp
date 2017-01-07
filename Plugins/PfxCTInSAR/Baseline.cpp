@@ -65,17 +65,6 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         CRMGImage mImg(MFileIn,MFileInH);   //主图像
         CRMGImage sImg(SFileIn,SFileInH);   //辅图像
 
-        //图像轨道拟合系数  
-        CSpMatrix<double> xPolyCoef(4,1);                       //----**aef
-        CSpMatrix<double> yPolyCoef(4,1);                       //----**bef
-        CSpMatrix<double> zPolyCoef(4,1);                       //----**cef
-        mImg.OrbitCoef(mImg.m_oHeader.StateVector,xPolyCoef,yPolyCoef,zPolyCoef);
-
-        CSpMatrix<double> xPolyCoef1(4,1);                      //----**aef
-        CSpMatrix<double> yPolyCoef1(4,1);                      //----**bef
-        CSpMatrix<double> zPolyCoef1(4,1);                      //----**cef
-        sImg.OrbitCoef(sImg.m_oHeader.StateVector,xPolyCoef1,yPolyCoef1,zPolyCoef1);
-
         //定义参数
         double wl=mImg.CONST_MATH_LIGHT_VELOCITY/mImg.m_oHeader.RadarCenterFrequency;
         double prf=mImg.m_oHeader.PulseRepetitionFrequency;
@@ -92,6 +81,14 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         double azimuth_t1_s=sImg.m_oHeader.ZeroDopplerTimeFirstLine.precision;
         double sensor_t0_s=sImg.m_oHeader.StateVector[0].timePoint.precision;
 
+        //图像轨道拟合系数  
+        CSpMatrix<double> xPolyCoef(4,1);                       //----**aef
+        CSpMatrix<double> yPolyCoef(4,1);                       //----**bef
+        CSpMatrix<double> zPolyCoef(4,1);                       //----**cef
+        CSpMatrix<double> xPolyCoef1(4,1);                      //----**aef
+        CSpMatrix<double> yPolyCoef1(4,1);                      //----**bef
+        CSpMatrix<double> zPolyCoef1(4,1);                      //----**cef
+
         if(CheckPreOrt)
         {
             mImg.m_oPreOrbit.LoadOrbfile();
@@ -105,28 +102,26 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             sensor_t0_s= sImg.m_oPreOrbit.preOrbitPoint[0].timePoint.precision;  //更新第一卫星采样点时间
 
             interval = mImg.m_oPreOrbit.m_fIntervalT;
+        } else
+        {
+            mImg.OrbitCoef(mImg.m_oHeader.StateVector,xPolyCoef,yPolyCoef,zPolyCoef);
+            sImg.OrbitCoef(sImg.m_oHeader.StateVector,xPolyCoef1,yPolyCoef1,zPolyCoef1);
         }
 
         //计算斜距
-        int lFirstClm,lFirstRow;    //主图像在原图像中的位置
-        int blockclm,blockrow;      //子区在粗配准图像中的位置
-        int lWidth,lHeight;         //数据大小
+        //数据大小
+        int lWidth=mImg.m_oHeader.Sample;
+        int lHeight=mImg.m_oHeader.Line;
+         //子区在粗配准图像中的位置
+        int blockclm=mImg.m_oHeader.leftUpC;
+        int blockrow=mImg.m_oHeader.leftUpL;
+        //主图像在原图像中的位置
+        int lFirstClm=mImg.m_oHeader.Registration.rangeOffset+blockclm;     //总的起始像元行
+        int lFirstRow=mImg.m_oHeader.Registration.azimuthOffst+blockrow;    //总的起始像元列
 
-        lWidth=mImg.m_oHeader.Sample;
-        lHeight=mImg.m_oHeader.Line;
-
-        lFirstClm=mImg.m_oHeader.Registration.rangeOffset;
-        lFirstRow=mImg.m_oHeader.Registration.azimuthOffst;
-         
-        blockclm=mImg.m_oHeader.leftUpC;
-        blockrow=mImg.m_oHeader.leftUpL;
-
-        lFirstClm=lFirstClm+blockclm;   //总的起始像元行
-        lFirstRow=lFirstRow+blockrow;   //总的起始像元列
-
-        int originPixel,originLine;     //图像初始大小
-        originPixel=mImg.m_oHeader.SampleOri;
-        originLine=mImg.m_oHeader.LineOri;
+        //图像初始大小
+        int originPixel=mImg.m_oHeader.SampleOri;
+        int originLine=mImg.m_oHeader.LineOri;
 
         double azimuth_tn_m=mImg.m_oHeader.ZeroDopplerTimeLastLine.precision;       //主图像最后行方位时间
         double azimuth_tn_s=sImg.m_oHeader.ZeroDopplerTimeLastLine.precision;       //辅图像最后行方位时间
@@ -141,10 +136,6 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         //利用中心经纬度计算地面三维坐标  x0,y0,z0 为地面坐标
         double x0=0,y0=0,z0=0;    
         mImg.LonLat2Coordinate(x0,y0,z0);
-
-        //计算 
-        double R1;     //主图像斜距
-        double R2;     //辅图像斜距
 
         //打开文件
         ofstream file1 (SlateOut, ios::out);
@@ -175,11 +166,7 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         double *inc_temp=new double[box_Width];
         double *base_temp=new double[box_Width];
         double *position=new double [box_Width];
-        for(int ii=0;ii<box_Width;ii++)
-        {
-            position[ii]=ii;
-        }
-
+        for(int ii=0;ii<box_Width;ii++) position[ii]=ii;
         //多视处理的大小
         int w=lWidth/RanLooks;
         int h=lHeight/AziLooks;
@@ -195,7 +182,7 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
         int numrow=0;
         int numclm=0;
         //主辅卫星的三维坐标
-        double satXm,satYm,satZm,satXs,satYs,satZs;
+        //double satXm,satYm,satZm,satXs,satYs,satZs;
         //按行处理 
         for(long row=0;row<h*AziLooks;row++)
         {
@@ -205,18 +192,18 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
             double t_poi=t0;
 
             //轨道坐标
-            satXm=mImg.Polyfit(xPolyCoef,t0,0);
-            satYm=mImg.Polyfit(yPolyCoef,t0,0);
-            satZm=mImg.Polyfit(zPolyCoef,t0,0);
+            double satXm=mImg.Polyfit(xPolyCoef,t0,0);
+            double satYm=mImg.Polyfit(yPolyCoef,t0,0);
+            double satZm=mImg.Polyfit(zPolyCoef,t0,0);
 
             //地面坐标
             mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
 
             //辅图像
             t0 = sImg.getSatposT(x0,y0,z0,xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
-            satXs = sImg.Polyfit(xPolyCoef1,t0,0);
-            satYs = sImg.Polyfit(yPolyCoef1,t0,0);
-            satZs = sImg.Polyfit(zPolyCoef1,t0,0);
+            double satXs = sImg.Polyfit(xPolyCoef1,t0,0);
+            double satYs = sImg.Polyfit(yPolyCoef1,t0,0);
+            double satZs = sImg.Polyfit(zPolyCoef1,t0,0);
 
             //基线距
             double baseline=sqrt((satXm-satXs)*(satXm-satXs)+
@@ -224,11 +211,12 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
                                  (satZm-satZs)*(satZm-satZs));
 
             //定义变量 
+            double R1;     //主图像斜距
+            double R2;     //辅图像斜距
             double Rs;
             double Rp;
             double angle;   //三角形中，垂直基线对应的锐角
             double Baseline_norm;           //垂直基线距
-
             //先计算5个采样点数据
             for(int ii=0;ii<5;ii++)
             {
