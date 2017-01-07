@@ -152,16 +152,47 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
 
         long box_Width=lWidth;
         int step=box_Width/(5-1);   //每个点之间的近似间隔
-        double interp_position[5]={0,(double)step,2*(double)step,3*(double)step,(double)box_Width-1};   //插值点位置
-        double *position=new double [box_Width];
-        for(int ii=0;ii<box_Width;ii++) position[ii]=ii;
         //多视处理的大小
         int w=lWidth/RanLooks;
         int h=lHeight/AziLooks;
 
+        double interp_position[5]={0,(double)step,2*(double)step,3*(double)step,(double)box_Width-1};   //插值点位置
+
+        double *position=new double [box_Width];
+        for(int ii=0;ii<box_Width;ii++) position[ii]=ii;
+
+        double *R1s = new double[5];
+        for (int i = 0; i < 5; ++i) 
+            R1s[i] = slt_near_m+lFirstClm*m_Dr+interp_position[i]*m_Dr;  //主图像斜距
+
+        // generate x0,y0,z0 for each iteration
+        double *x00s = new double[h*AziLooks];
+        double *y00s = new double[h*AziLooks];
+        double *z00s = new double[h*AziLooks];
+        double *x0s = new double[h*AziLooks*5];
+        double *y0s = new double[h*AziLooks*5];
+        double *z0s = new double[h*AziLooks*5];
         //利用中心经纬度计算地面三维坐标  x0,y0,z0 为地面坐标
-        double x0=0,y0=0,z0=0;    
-        mImg.LonLat2Coordinate(x0,y0,z0);
+        double xx=0,yy=0,zz=0;    
+        mImg.LonLat2Coordinate(xx,yy,zz);
+        for (long row = 0; row < h*AziLooks; ++row) 
+        {
+            double t0 = isAscend?(azimuth_t1_m+(lFirstRow+row)/prf-sensor_t0_m):(azimuth_tn_m+(originLine-lFirstRow-row)/prf-sensor_t0_m);     //成像时间
+            double t_poi=t0;
+            //地面坐标
+            mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,xx,yy,zz,20);   //x0,y0,z0 为地面坐标
+            x00s[row] = xx;
+            y00s[row] = yy;
+            z00s[row] = zz;
+            t0 = sImg.getSatposT(xx,yy,zz,xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
+            for (int ii = 0; ii < 5; ++ii)
+            {
+                mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1s[ii],xx,yy,zz,10);
+                x0s[5*row+ii] = xx;
+                y0s[5*row+ii] = yy;
+                z0s[5*row+ii] = zz;
+            }
+        }
 
         for (int m = 0; m < h; ++m)
         {
@@ -194,10 +225,10 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
                 double satZm=mImg.Polyfit(zPolyCoef,t0,0);
 
                 //地面坐标
-                mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
+                //mImg.Newton(t0,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,slt_near_m,x0,y0,z0,20);   //x0,y0,z0 为地面坐标
 
                 //辅图像
-                t0 = sImg.getSatposT(x0,y0,z0,xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
+                t0 = sImg.getSatposT(x00s[row],y00s[row],z00s[row],xPolyCoef1,yPolyCoef1,zPolyCoef1,CheckPreOrt);
                 double satXs = sImg.Polyfit(xPolyCoef1,t0,0);
                 double satYs = sImg.Polyfit(yPolyCoef1,t0,0);
                 double satZs = sImg.Polyfit(zPolyCoef1,t0,0);
@@ -217,8 +248,10 @@ void CBaseline::BaselineInangleSlate(string MFileIn,string SFileIn,bool CheckPre
                 //先计算5个采样点数据
                 for(int ii=0;ii<5;ii++)
                 {
-                    R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
-                    mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1,x0,y0,z0,10);
+                    double x0 = x0s[5*row+ii]; double y0 = y0s[5*row+ii]; double z0 = z0s[5*row+ii];
+                    double R1 = R1s[ii];
+                    //R1=slt_near_m+lFirstClm*m_Dr+interp_position[ii]*m_Dr;  //主图像斜距
+                    //mImg.Newton(t_poi,semia,semib,xPolyCoef,yPolyCoef,zPolyCoef,R1,x0,y0,z0,10);
                     R2=sqrt((satXs-x0)*(satXs-x0)+(satYs-y0)*(satYs-y0)+(satZs-z0)*(satZs-z0));
 
                     Rs=sqrt(satXm*satXm+satYm*satYm+satZm*satZm);
