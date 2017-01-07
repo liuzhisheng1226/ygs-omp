@@ -35,7 +35,6 @@ cmpfiles()
             echo $cmp_res
         else
             echo "$file2 doesn't exist!"
-            exit
         fi
     done
 }
