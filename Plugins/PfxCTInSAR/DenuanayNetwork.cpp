@@ -6,6 +6,8 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
+#include <vector>
+#include <omp.h>
 
 #define const_Pi 3.1415926
 
@@ -91,14 +93,13 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
     }
     fclose(fp);
     //局部变量
-    int i,j;
+    //int i,j;
 
     ifstream pscFile (strPscFile, ios::in);
     if (!pscFile.is_open()) {
         cout << "error open file\n";
         return;
     }
-
 
     //三角网
     Delaunay d;
@@ -123,7 +124,10 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
     d.TrianglesToEdges(m_Triangles,edges);
 
     int Count_edge=d.Count_edge(edges);
-
+    if (!Count_edge) {
+        printf("no edge!\n");
+        exit(-1);
+    }
 
     //2、计算每条边的增量
     ofstream file_edge (strEdgeFileOut, ios::out);
@@ -132,42 +136,45 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
         return;
     }
 
-    float *diffpha= new float[numdiff];
-    float *upbn= new float[numdiff];
-    float *upinc= new float[numdiff];
-    float *upslt= new float[numdiff];
-    float *time_c= new float[numdiff];
-
-    memset(diffpha,0,sizeof(float)*numdiff);
-    memset(upbn,0,sizeof(float)*numdiff);
-    memset(upinc,0,sizeof(float)*numdiff);
-    memset(upslt,0,sizeof(float)*numdiff);
-    memset(time_c,0,sizeof(float)*numdiff);
-
-
-
-    float **result,*temp;
-    temp=new float[1];
-    result=new float*[1];
-    result[0]=new float[3];
-    edge_Re edgeTemp;
-
-
-    PSC ps0,ps1;
-    pscIterator ipscT;      //PSC集合遍历迭代器
-
     //---------------进度条----------
     //---------------进度条--------------
 
+    vector<edge> vedges;
+    for(edgeIterator ei=edges.begin();ei!=edges.end();ei++) {
+        vedges.push_back(*ei);
+    }
 
-    for(edgeIterator ei=edges.begin();ei!=edges.end();ei++)
+    omp_lock_t elock;
+    omp_init_lock(&elock);
+#pragma omp parallel for 
+    for (int i = 0; i < Count_edge; ++i)
     {
+        edge *ei = &(vedges[i]);
+
+        float *diffpha= new float[numdiff];
+        float *upbn= new float[numdiff];
+        float *upinc= new float[numdiff];
+        float *upslt= new float[numdiff];
+        float *time_c= new float[numdiff];
+        memset(diffpha,0,sizeof(float)*numdiff);
+        memset(upbn,0,sizeof(float)*numdiff);
+        memset(upinc,0,sizeof(float)*numdiff);
+        memset(upslt,0,sizeof(float)*numdiff);
+        memset(time_c,0,sizeof(float)*numdiff);
+
+        float **result,*temp;
+        temp=new float[1];
+        result=new float*[1];
+        result[0]=new float[3];
+        edge_Re edgeTemp;
+
         //边上的两个顶点
+        PSC ps0,ps1;
         ps0.m_pos=ei->m_Pv0->GetPoint();
         ps1.m_pos=ei->m_Pv1->GetPoint();
-        ipscT=PSpoints.find(ps0);
-
-        for(i=0;i<numdiff;i++)
+        //PSC集合遍历迭代器
+        pscIterator ipscT=PSpoints.find(ps0);
+        for(int i=0;i<numdiff;i++)
         {
             ps0.data[i]=ipscT->data[i];
             ps0.bv[i]=ipscT->bv[i];
@@ -178,7 +185,7 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
         ps0.index=ipscT->index;
 
         ipscT=PSpoints.find(ps1);
-        for(i=0;i<numdiff;i++)
+        for(int i=0;i<numdiff;i++)
         {
             ps1.data[i]=ipscT->data[i];
             ps1.bv[i]=ipscT->bv[i];
@@ -225,7 +232,6 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
         optins[0]=result[0][0];optins[1]=result[0][1];
         CTInSAR_Findopt(optins,numdiff,time_c,diffpha,upbn,upinc,upslt,wl,result);
 
-
         edgeTemp.dV=result[0][0];
         edgeTemp.dH=result[0][1];
         edgeTemp.edgeCoh=-result[0][2];  //边上的时间相干性
@@ -235,12 +241,25 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
         edgeTemp.index1=ps1.index;
         //edgeTemp.m_Pv0=ei->m_Pv0;
         //edgeTemp.m_Pv1=ei->m_Pv0;
-
         
         //输出边
+        omp_set_lock(&elock);
+        file_edge.seekp((streampos)i*sizeof(edge_Re), ios::beg);
         file_edge.write((char *)(&edgeTemp), sizeof(edge_Re));
-    }
+        omp_unset_lock(&elock);
 
+        //清楚内存
+        delete []time_c;
+        delete []diffpha;
+        delete []upbn;
+        delete []upinc;
+        delete []upslt;
+
+        delete []temp;
+        delete []result[0];
+        delete []result;
+    }
+    omp_destroy_lock(&elock);
     //关闭文件；
     file_edge.close();
 
@@ -265,18 +284,6 @@ void CDenuanayNetwork::CTInSAR_incre(string strPscFile,string strPscFileH,string
     fprintf(fp,"\n[numdiff]");
     fprintf(fp,"\n\t\t%d",numdiff);
     fclose(fp);
-
-    //清楚内存
-    delete []time_c;
-    delete []diffpha;
-    delete []upbn;
-    delete []upinc;
-    delete []upslt;
-
-    delete []temp;
-    delete []result[0];
-    delete []result;
-
 }
 
 void CDenuanayNetwork::CTInSAR_incre(string filecoh,string filetime,vector<string> filepha,
