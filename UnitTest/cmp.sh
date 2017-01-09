@@ -115,12 +115,12 @@ then
 elif [ $mfname = "TestIntegrationMakefile" ]
 then
     echo "compare TestIntegrationMakefile data"
-    cmpfiles CTI/intregatePoint.* 
+    cmpfiles CTI/integraatePoint.* 
     cmpfiles CTI/vel.txt
 elif [ $mfname = "TestResidueMakefile" ]
 then
     echo "compare TestResidueMakefile data"
-    cmpfiles CTI/intregatePoint.* 
+    cmpfiles CTI/integratePoint.* 
 elif [ $mfname = "TestResidueUnwMakefile" ]
 then
     echo "compare TestResidueUnwMakefile data"
