@@ -69,7 +69,7 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
 
     int IntegrationCount=0;    //集成点数
     prSet intePointSet;
-    pointResult intePointTemp;
+    pointResult intePointTmp;
     flag=0;
     //读取集成点
     fstream InteFile (integrationFileIn, ios::in);
@@ -77,9 +77,9 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
         cout << "error open file\n";
         return;
     }
-    while ((flag = InteFile.read((char *)(&intePointTemp), sizeof(pointResult)).gcount()) > 1)
+    while ((flag = InteFile.read((char *)(&intePointTmp), sizeof(pointResult)).gcount()) > 1)
     {
-        intePointSet.insert(intePointTemp);
+        intePointSet.insert(intePointTmp);
         IntegrationCount++;
     }
     InteFile.close();
@@ -100,8 +100,12 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
     //计算每个集成点的残余相位
     //for(prIterator pri=intePointSet.begin();pri!=intePointSet.end();pri++)
     
+    omp_lock_t w_lock;
+    omp_init_lock(&w_lock);
+#pragma omp parallel for  
     for (int i = 0; i < vprs.size(); ++i)
     {
+        pointResult intePointTemp = intePointTmp;
         pointResult *pri = &(vprs[i]);
         //在PSC中找到对应的点，读取相应参数
         //PSC pscTemp;
@@ -141,8 +145,12 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
             intePointTemp.Y=pri->Y;
             //NewIntePointSet.insert(intePointTemp);
 
+            omp_set_lock(&w_lock);
+            InteFile.seekg((streampos)i*sizeof(pointResult), ios::beg);
             InteFile.write((char *)(&intePointTemp), sizeof(pointResult));
+            omp_unset_lock(&w_lock);
     }
+    omp_destroy_lock(&w_lock);
     InteFile.close();
     intePointSet.clear();
     PscSet.clear();
