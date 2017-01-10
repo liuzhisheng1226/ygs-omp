@@ -5,8 +5,8 @@
 #include <cstring>
 #include <iostream>
 #include <fstream>
-
-
+#include <vector>
+#include <omp.h>
 
 #define const_Pi 3.141592658978
 
@@ -51,16 +51,10 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
         }
     }
     
-    int PSCcount,IntegrationCount;
-    PSCcount=0;       //相干点
-    IntegrationCount=0;    //集成点数
-    int flag=0;
-    prSet intePointSet;
+    int PSCcount=0;       //相干点
     pscSet PscSet;
-
     PSC pscTemp;
-    pointResult intePointTemp;
-
+    int flag=0;
     ifstream PscFile (pscFileIn, ios::in);
     if (!PscFile.is_open()) {
         cout << "error open file\n";
@@ -73,6 +67,9 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
     }
     PscFile.close();
 
+    int IntegrationCount=0;    //集成点数
+    prSet intePointSet;
+    pointResult intePointTemp;
     flag=0;
     //读取集成点
     fstream InteFile (integrationFileIn, ios::in);
@@ -95,30 +92,34 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
         return;
     }
 
+    vector<pointResult> vprs;
+    for(prIterator pri=intePointSet.begin();pri!=intePointSet.end();pri++) {
+        vprs.push_back(*pri);
+    }
+
     //计算每个集成点的残余相位
-    float modelPha;  //模型相位
-    float residuePha;
-    float Vtemp;
-    pscIterator psci;  //找到PSC的迭代器
-    //prSet NewIntePointSet;  //用于更新集成点里面的残余相位
-    for(prIterator pri=intePointSet.begin();pri!=intePointSet.end();pri++)
+    //for(prIterator pri=intePointSet.begin();pri!=intePointSet.end();pri++)
+    
+    for (int i = 0; i < vprs.size(); ++i)
     {
+        pointResult *pri = &(vprs[i]);
         //在PSC中找到对应的点，读取相应参数
-        pscTemp.m_pos.X=pri->X;
-        pscTemp.m_pos.Y=pri->Y;
-        psci=PscSet.find(pscTemp);
-        Vtemp=pri->vel/365000;   //将单位转换成m/d  因为 deltaD里面的单位是d（天）
+        //PSC pscTemp;
+        //pscTemp.m_pos.X=pri->X;
+        //pscTemp.m_pos.Y=pri->Y;
+        pscIterator psci=PscSet.find(PSC(pri->X, pri->Y));
+        float Vtemp=pri->vel/365000;   //将单位转换成m/d  因为 deltaD里面的单位是d（天）
         for(int i=0;i<numdiff;i++)
         {
             //模型相位
-            modelPha=0;
-            modelPha=4*const_Pi/wl*((psci->deltaD[i])*Vtemp-(psci->bv[i]*pri->hei)/(sin(psci->iAngle[i])*psci->sRange[i]));
+            //modelPha=0;
+            float modelPha=4*const_Pi/wl*((psci->deltaD[i])*Vtemp-(psci->bv[i]*pri->hei)/(sin(psci->iAngle[i])*psci->sRange[i]));
 
             //先缠绕
             modelPha= modelPha-int(modelPha/(2*const_Pi))*2*const_Pi;
 
             //差分相位减去模型相位
-            residuePha=psci->data[i]-modelPha;
+            float residuePha=psci->data[i]-modelPha;
 
             if(residuePha>const_Pi)
             {
@@ -142,9 +143,7 @@ void CResidue::ResiduePro(string pscFileIn,string pscFileInH,string integrationF
 
             InteFile.write((char *)(&intePointTemp), sizeof(pointResult));
     }
-
     InteFile.close();
-
     intePointSet.clear();
     PscSet.clear();
 
