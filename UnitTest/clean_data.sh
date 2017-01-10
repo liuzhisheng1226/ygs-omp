@@ -125,11 +125,13 @@ then
 elif [ $mfname = "TestIntegrationMakefile" ]
 then
     echo "delete TestIntegrationMakefile data"
-    rm -f CTI/intregatePoint.* CTI/vel.txt
+    rm -f CTI/integratePoint.* CTI/vel.txt integratePoint.rmg
 elif [ $mfname = "TestResidueMakefile" ]
 then
-    echo "delete TestResidueMakefile data"
-    echo "TestResidueMakefile is special, run ./test.sh TestIntegrationMakefile to reset the data"
+    echo "delete TestResidueMakefile data(reset to TestIntegrationMakefile data)"
+    #echo "TestResidueMakefile is special, run ./test.sh TestIntegrationMakefile to reset the data"
+    rm -f CTI/integratePoint.rmg
+    cp integratePoint.rmg CTI/integratePoint.rmg 
 elif [ $mfname = "TestResidueUnwMakefile" ]
 then
     echo "delete TestResidueUnwMakefile data"
