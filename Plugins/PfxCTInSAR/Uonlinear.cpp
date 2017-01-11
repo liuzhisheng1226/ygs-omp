@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <omp.h>
 
 #define const_Pi 3.1415926
 
@@ -135,16 +136,16 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
 
     //3、读取解缠后的残余相位
     flag=0;
-    pointResiduUnwPha residuePointTemp;
+    pointResiduUnwPha residuePointTmp;
     prupSet residuePointSet;
     ifstream residueFile (unwResidueFileIn, ios::in);
     if (!residueFile.is_open()) {
         cout << "error open file\n";
         return;
     }
-    while ((flag = residueFile.read((char *)(&residuePointTemp), sizeof(pointResult)).gcount()) > 1)
+    while ((flag = residueFile.read((char *)(&residuePointTmp), sizeof(pointResult)).gcount()) > 1)
     {
-        residuePointSet.insert(residuePointTemp);
+        residuePointSet.insert(residuePointTmp);
     }
     residueFile.close();
 
@@ -152,48 +153,56 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
     //对每个离散点  其离散点的残余相位等于周围（大气相关距离内）点的平均
     prupSet newResiduePointSet;
     int size=int(actmosDistance/resolutionSize);
-    prupIterator prupi1;
-    prupIterator prupi2;
-    int tempCount;
-    float *residuetemp=new float[numdiff];
-    memset(residuetemp,0,numdiff*sizeof(float));
 
-    for(prupIterator prupi=residuePointSet.begin();prupi!=residuePointSet.end();prupi++)
+    omp_lock_t slock;
+    omp_init_lock(&slock);
+#pragma omp parallel 
     {
-        tempCount=0;
-        //矩形窗坐上角点
-        prupi1=find_if(residuePointSet.begin(),residuePointSet.end(),pointOutCircle(*prupi,-size/2)); 
-        //矩形窗右下角点
-        prupi2=find_if(residuePointSet.begin(),residuePointSet.end(),pointOutCircle(*prupi,size/2));
-
-        residuePointTemp.X=prupi->X;
-        residuePointTemp.Y=prupi->Y;
-        residuePointTemp.index=prupi->index;
-
-        //清零
-        for(int i=0;i<numdiff;i++)
-           residuetemp[i]=0;
-
-        for(prupi1;prupi1!=prupi2;prupi1++)
+#pragma omp single
         {
-            if(distance(PointF(prupi1->X,prupi1->Y),PointF(prupi->X,prupi->Y))<size/2)
+            for(prupIterator prupi=residuePointSet.begin();prupi!=residuePointSet.end();prupi++)
+#pragma omp task
             {
-                tempCount++;
-                //对所有残余相位进行平均
+                //printf("tid: %d ", omp_get_thread_num());
+                float *residuetemp=new float[numdiff];
+                memset(residuetemp,0,numdiff*sizeof(float));
+                int tempCount=0;
+                //矩形窗坐上角点
+                prupIterator prupi1=find_if(residuePointSet.begin(),residuePointSet.end(),pointOutCircle(*prupi,-size/2)); 
+                //矩形窗右下角点
+                prupIterator prupi2=find_if(residuePointSet.begin(),residuePointSet.end(),pointOutCircle(*prupi,size/2));
+
+                pointResiduUnwPha residuePointTemp;
+                residuePointTemp.X=prupi->X;
+                residuePointTemp.Y=prupi->Y;
+                residuePointTemp.index=prupi->index;
+
+                for(;prupi1!=prupi2;prupi1++)
+                {
+                    if(distance(PointF(prupi1->X,prupi1->Y),PointF(prupi->X,prupi->Y))<size/2)
+                    {
+                        tempCount++;
+                        //对所有残余相位进行平均
+                        for(int i=0;i<numdiff;i++)
+                        {
+                            residuetemp[i]+=prupi1->residuePha[i];
+                        }
+                    }
+                }
+
                 for(int i=0;i<numdiff;i++)
                 {
-                    residuetemp[i]+=prupi1->residuePha[i];
+                    residuePointTemp.residuePha[i]=residuetemp[i]/tempCount;
                 }
+                //添加平均后的点；
+                omp_set_lock(&slock);
+                newResiduePointSet.insert(residuePointTemp);
+                omp_unset_lock(&slock);
+
+                delete []residuetemp;
+                residuetemp=NULL;
             }
         }
-
-        for(int i=0;i<numdiff;i++)
-        {
-            residuePointTemp.residuePha[i]=residuetemp[i]/tempCount;
-        }
-
-        //添加平均后的点；
-        newResiduePointSet.insert(residuePointTemp);
     }
     residuePointSet.clear();
 
@@ -233,65 +242,82 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
     }
     
     //然后对每个点来计算每幅SAR的残余相位，然后实现非形变相位和大气相位分离
-    CLsqr mlsqr(numdiff,numsar);
-    float *B=new float[numdiff];
-    memset(B,0,numdiff*sizeof(float));
-
-    float *X=new float[numsar];
-    memset(X,0,numsar*sizeof(float));
-
-    
-    for(prupIterator prupi=newResiduePointSet.begin();prupi!=newResiduePointSet.end();prupi++)
+#pragma omp parallel
     {
-        for(int i=0;i<numdiff;i++)
-            B[i]=prupi->residuePha[i];
+#pragma omp single
+        {
+            for(prupIterator prupi=newResiduePointSet.begin();prupi!=newResiduePointSet.end();prupi++)
+#pragma omp task
+            {
+                CLsqr mlsqr(numdiff,numsar); 
+                float *B=new float[numdiff];
+                memset(B,0,numdiff*sizeof(float));
+                float *X=new float[numsar];
+                memset(X,0,numsar*sizeof(float));
 
-        mlsqr.method(A,B,X);
-        pointResiduUnwPha SarResiduePoint(prupi->X,prupi->Y);
-        SarResiduePoint.index=prupi->index;
-        for(int i=0;i<numsar;i++)
-            SarResiduePoint.residuePha[i]=X[i];
+                for(int i=0;i<numdiff;i++)
+                    B[i]=prupi->residuePha[i];
 
-        //添加
-        residuePointSet.insert(SarResiduePoint);
+                mlsqr.method(A,B,X);
+                pointResiduUnwPha SarResiduePoint(prupi->X,prupi->Y);
+                SarResiduePoint.index=prupi->index;
+                for(int i=0;i<numsar;i++)
+                    SarResiduePoint.residuePha[i]=X[i];
+
+                //添加
+                omp_set_lock(&slock);
+                residuePointSet.insert(SarResiduePoint);
+                omp_unset_lock(&slock);
+                delete []B;
+                B=NULL;
+                delete []X;
+                X=NULL;
+            }
+        }
     }
     newResiduePointSet.clear();
 
     //通过时间低通，获得非形变相位   时间序列上用个平均滑动窗
     prupSet uonlinearPointSet;
     prupSet actmosPointSet;
-    pointResiduUnwPha uonlinearPoint,actmosPoint;
-    for(prupIterator prupi=residuePointSet.begin();prupi!=residuePointSet.end();prupi++)
+#pragma omp parallel
     {
-        uonlinearPoint.X=prupi->X;
-        uonlinearPoint.Y=prupi->Y;
-        uonlinearPoint.index=prupi->index;
+#pragma omp single
+        {
+            for(prupIterator prupi=residuePointSet.begin();prupi!=residuePointSet.end();prupi++)
+#pragma omp task
+            {
+                pointResiduUnwPha uonlinearPoint,actmosPoint;
+                uonlinearPoint.X=prupi->X;
+                uonlinearPoint.Y=prupi->Y;
+                uonlinearPoint.index=prupi->index;
 
-        actmosPoint.X=prupi->X;
-        actmosPoint.Y=prupi->Y;
-        actmosPoint.index=prupi->index;
+                actmosPoint.X=prupi->X;
+                actmosPoint.Y=prupi->Y;
+                actmosPoint.index=prupi->index;
 
-         for(int i=0;i<numsar;i++)
-         {
+                 for(int i=0;i<numsar;i++)
+                 {
+                     //非线性形变相位
+                     //对于第一幅SAR图像
+                     if(i==0)
+                         uonlinearPoint.residuePha[i]=(prupi->residuePha[i]+prupi->residuePha[i+1])/2;
+                     //对于最后一幅SAR图像
+                     else if(i==numsar-1)
+                         uonlinearPoint.residuePha[i]=(prupi->residuePha[i-1]+prupi->residuePha[i])/2;
+                     else
+                         uonlinearPoint.residuePha[i]=(prupi->residuePha[i-1]+prupi->residuePha[i]+prupi->residuePha[i+1])/3;
 
-             //非线性形变相位
-             //对于第一幅SAR图像
-             if(i==0)
-                 uonlinearPoint.residuePha[i]=(prupi->residuePha[i]+prupi->residuePha[i+1])/2;
-             //对于最后一幅SAR图像
-             else if(i==numsar-1)
-                 uonlinearPoint.residuePha[i]=(prupi->residuePha[i-1]+prupi->residuePha[i])/2;
-             else
-                 uonlinearPoint.residuePha[i]=(prupi->residuePha[i-1]+prupi->residuePha[i]+prupi->residuePha[i+1])/3;
-
-             //大气相位
-             actmosPoint.residuePha[i]=prupi->residuePha[i]-uonlinearPoint.residuePha[i];
-
-         }
-
-         //添加
-         uonlinearPointSet.insert(uonlinearPoint);
-         actmosPointSet.insert(actmosPoint);
+                     //大气相位
+                     actmosPoint.residuePha[i]=prupi->residuePha[i]-uonlinearPoint.residuePha[i];
+                 }
+                 //添加
+                 omp_set_lock(&slock);
+                 uonlinearPointSet.insert(uonlinearPoint);
+                 actmosPointSet.insert(actmosPoint);
+                 omp_unset_lock(&slock);
+            }
+        }
     }
 
     //输出线性形变速率，保存在TXT中
@@ -338,10 +364,8 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
         if(fp==NULL) return;
         fprintf(fp,"X\t\tY\t\tcumulative deformation(mm)");
         for(prIterator intepi=intePointSet.begin();intepi!=intePointSet.end();intepi++)
-        {
-            uonlinearPoint.X=intepi->X;
-            uonlinearPoint.Y=intepi->Y;
-            uonPi=uonlinearPointSet.find(uonlinearPoint);
+        { 
+            uonPi=uonlinearPointSet.find(pointResiduUnwPha(intepi->X, intepi->Y));
             //测试，输出非线性形变
             fDeformation=intepi->vel*SarTime[i]+uonPi->residuePha[i]*wl/(4*const_Pi)*1000;   //非线性部分转化成毫米
             fprintf(fp,"\n%f",intepi->X);
@@ -352,8 +376,7 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
         fclose(fp);
     }
 
-    delete []residuetemp;
-    residuetemp=NULL;
+    omp_destroy_lock(&slock);
 
     for(int i=0;i<numdiff;i++)
     {
@@ -362,15 +385,8 @@ void CUonlinear::UonlinearPro(string pscFileIn,string pscFileInH,string inteFile
     }
     delete []A;
     A=NULL;
-    delete []B;
-    B=NULL;
-    delete []X;
-    X=NULL;
     delete []SarTime;
     SarTime=NULL;
-
-
-
 }
 float CUonlinear::distance(PointF p1,PointF p2)
 {
