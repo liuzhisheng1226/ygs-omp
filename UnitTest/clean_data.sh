@@ -55,6 +55,7 @@ then
                 mkdir ROI
                 rm -rf CTI/BIR
                 mkdir CTI/BIR
+                rm -f integratePoint.rmg
                 rm -f CTI/*.ldr CTI/*.rmg CTI/vel.txt CTI/velFileOut.txt CTI/deformationOut/*
                 echo "all outdata in $path deleted!"
             ;;
